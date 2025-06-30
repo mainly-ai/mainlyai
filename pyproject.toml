@@ -1,0 +1,33 @@
+[tool.poe.tasks]
+# run with eg `uv run poe fmt`
+fmt = "ruff format ${PWD}"
+lint = "ruff check --fix ${PWD}"
+test = "pytest ${PWD}"
+# run all the above
+all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
+
+"ci:fmt" = "ruff format --check ${PWD}"  # fail if not formatted
+"ci:lint" = "ruff check ${PWD}"
+
+[project]
+name = "mainlyai"
+version = "0.1.0"
+description = "Mainly AI monorepo"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mirmod"
+]
+
+[tool.uv.sources]
+mirmod = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.32.0",
+    "pytest >= 8.3.4",
+    "ruff >= 0.8.5",
+]
+
+[tool.uv.workspace]
+members = ["packages/*", "apps/*"]
