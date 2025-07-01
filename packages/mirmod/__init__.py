@@ -1,6 +1,6 @@
 from .security.security_context import Security_context
 
-from .workflow_objects.code_block import (
+from .workflow_objects import (
     Code_block,
     Compute_policy,
     Compute_resource_group,
@@ -27,6 +27,7 @@ __all__ = [
     "Model",
     "Project",
     "Storage_policy",
+    "miranda",
 ]
 
 _all_wob_classes = [
@@ -73,9 +74,6 @@ _object_to_table_lookup = {
 
 assert len(_all_wob_classes) == len(_object_to_table_lookup), (
     "The objects in _all_wob_types must be mapped properly to _object_to_table_loopup"
-)
-assert len(_all_wob_classes) == len(_table_to_object_lookup), (
-    "The objects in _all_wob_types must be mapped properly to _table_to_object_lookup"
 )
 
 

@@ -8,6 +8,15 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 
 "ci:fmt" = "ruff format --check ${PWD}"  # fail if not formatted
 "ci:lint" = "ruff check ${PWD}"
+build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"} ]
+
+[tool.poe.tasks."build:mirmod"]
+cmd = "uv build"
+cwd = "./packages/mirmod"
+
+[tool.poe.tasks."build:miranda_admin_ops"]
+cmd = "uv build"
+cwd = "./packages/miranda_admin_ops"
 
 [project]
 name = "mainlyai"
@@ -15,12 +24,11 @@ version = "0.1.0"
 description = "Mainly AI monorepo"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "mirmod"
-]
+dependencies = ["mirmod", "miranda_admin_ops"]
 
 [tool.uv.sources]
 mirmod = { workspace = true }
+miranda_admin_ops = { workspace = true }
 
 [dependency-groups]
 dev = [

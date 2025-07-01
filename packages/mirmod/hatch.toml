@@ -1,0 +1,12 @@
+[build.targets.wheel]
+include = [
+  "*.py",
+  "README.md",
+  "LICENSE"
+]
+exclude = [
+    "tests/**"
+]
+
+[build.targets.wheel.sources]
+"" = "mirmod"

@@ -1,0 +1,2 @@
+class MirandaStopCurrentIterator(Exception):
+    pass
