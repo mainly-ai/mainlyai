@@ -1,0 +1,4 @@
+[submodule "packages/miranda_admin_ops"]
+	path = packages/miranda_admin_ops
+	url = git@github.com:mainly-ai/miranda_admin_ops.git
+	branch = main
