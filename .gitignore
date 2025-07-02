@@ -172,3 +172,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# mirmod runtime stuff
+process_context.pickle
+WOB-*.py
+add_coauthors.sh
