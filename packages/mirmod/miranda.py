@@ -70,6 +70,14 @@ WOB_CODE_BLOCK_HEADER = (
     "from mirmod.workflow_object import WOB\nwob = WOB()\n_DYNAMIC_NODE_ATTRS = {}\n"
 )
 
+# Return values for the exception handler
+F_PROCEED = 0
+F_NEXT_ELEMENT = 1
+F_EXIT = 2
+F_TRY_AGAIN = 3
+F_RESTART = 4
+F_RESTART_AND_REINIT = 5
+
 
 class WOBInstanceException(Exception):
     pass

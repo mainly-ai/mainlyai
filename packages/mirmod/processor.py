@@ -44,15 +44,6 @@ nest_asyncio.apply()
 
 _the_global_context = {"process_context": {}, "web_server_thread": None}
 
-##########################
-# execute_node() exit codes.
-E_PROCEED_TO_NEXT_NODE = 0  # normal execution; mark node as executed and move instr ptr
-E_MODIFIED_PLAN = (
-    1  # execution plan is modified; trust the changes and don't change anything.
-)
-E_SKIP_NODE = 2  # node was already executed. Move to next.
-##########################
-
 
 def write_process_context_to_disk():
     global _the_global_context
@@ -1613,7 +1604,7 @@ async def execute_if_no_inbound_edges(
         )
         try:
             res = await execute_node(src_code, src_wob, src_wob_key, execution_context)
-            if res == E_SKIP_NODE:
+            if res == miranda.E_SKIP_NODE:
                 # node was already executed; move to next node.
                 execution_context.current_node = old_current_node
                 return True
@@ -1831,7 +1822,7 @@ async def execute_plan(
                     pg.in_degree(execution_context.execution_graph, dst_wob_key)
                     <= execution_context.received_count[dst_wob_key]
                 ):
-                    node_exec_result = E_PROCEED_TO_NEXT_NODE
+                    node_exec_result = miranda.E_PROCEED_TO_NEXT_NODE
                     if execution_context.restart_loop:
                         s = execution_context.active_iterator_field
                         for mid in [n for n in s.field_nodes if n != s.transmitter_mid]:
@@ -1846,7 +1837,7 @@ async def execute_plan(
                                 dst_code, dst_wob, dst_wob_key, execution_context
                             )
                             if (
-                                node_exec_result == E_SKIP_NODE
+                                node_exec_result == miranda.E_SKIP_NODE
                             ):  # Node has already been executed.
                                 execution_context.move_instruction_pointer()
                                 continue
@@ -1860,7 +1851,7 @@ async def execute_plan(
                             execution_context.caught_wob_error = dst_wob_key
                             break  # Don't mark this node as executed and exit edge loop
                         # Make sure we're not executing this node again in this execution context.
-                        if node_exec_result == E_PROCEED_TO_NEXT_NODE:
+                        if node_exec_result == miranda.E_PROCEED_TO_NEXT_NODE:
                             # Only mark the node as executed if execution plan hasn't changed.
                             execution_context.mark_as_executed(dst_wob_key)
                         d = execution_context.current_node.get_dispatches()
@@ -1884,7 +1875,7 @@ async def execute_plan(
                             restore_execution_context(execution_context)
                             execution_context.move_instruction_pointer()
                             break  #
-            if node_exec_result == E_PROCEED_TO_NEXT_NODE:
+            if node_exec_result == miranda.E_PROCEED_TO_NEXT_NODE:
                 # Only move the instruction pointer if the current node is marked as been executed
                 # and we haven't modified the execution plan during node execution.
                 if execution_context.has_executed(
@@ -1944,7 +1935,7 @@ async def execute_node(
     dst_code, dst_wob, dst_wob_key, execution_context: _Execution_context
 ):
     if execution_context.current_node_has_been_executed():
-        return E_SKIP_NODE  # skip nodes which has already been executed
+        return miranda.E_SKIP_NODE  # skip nodes which has already been executed
     # Call the node code.
     print(
         '|=> INFO: All inbound edges received for "{}". Executing node.'.format(
@@ -1970,22 +1961,22 @@ async def execute_node(
                 ret = await hdl(execution_context, method_to_call, dst_code.wob)
             if ret == miranda.F_NEXT_ELEMENT:
                 await f_next_element(execution_context)
-                return E_MODIFIED_PLAN
+                return miranda.E_MODIFIED_PLAN
             elif ret == miranda.F_EXIT:
                 await f_exit(execution_context)
-                return E_MODIFIED_PLAN
+                return miranda.E_MODIFIED_PLAN
             elif ret == miranda.F_RESTART:
                 await f_restart(execution_context)
-                return E_MODIFIED_PLAN
+                return miranda.E_MODIFIED_PLAN
             elif ret == miranda.F_RESTART_AND_REINIT:
                 await f_restart_and_reinitialize(execution_context)
-                return E_MODIFIED_PLAN
+                return miranda.E_MODIFIED_PLAN
         else:
             await method_to_call(*args_for_call)
     else:
         method_to_call(*args_for_call)
 
-    return E_PROCEED_TO_NEXT_NODE
+    return miranda.E_PROCEED_TO_NEXT_NODE
 
 
 def prune_graph_for_deployment(NG: nx.DiGraph, cached_wobs: dict):
