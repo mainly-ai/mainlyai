@@ -232,27 +232,31 @@ def copy_acls(sc: Security_context, src_wob, dest_wob):
 
 
 def create_wob(
-    ko: Knowledge_object,
+    ko: Knowledge_object | Security_context,
     name: str = "No name",
     description: str = "",
     inherit_acls=True,
     wob_type="CODE",
 ):
-    sc = ko.sctx
+    is_direct_context = isinstance(ko, Security_context)
+    sc = ko.sctx if not is_direct_context else ko
     con = sc.connect()  # make sure we have a live connection or create a new one.
 
     wob = table_to_object(wob_type)(sc, id=-1)
     id, metadata_id = wob.create(con, name, description)
     con.commit()
     wob = table_to_object(wob_type)(sc, id)
-    link(sc, ko, wob)
 
-    if inherit_acls:
-        # with sc.connect() as con:
-        con = sc.connect()
-        with con.cursor() as cursor:
-            copy_ko_acls(cursor, ko, wob)
-            con.commit()
+    # If ko is a Knowledge_object, then link it to the wob
+    if not is_direct_context:
+        link(sc, ko, wob)
+
+        if inherit_acls:
+            # with sc.connect() as con:
+            con = sc.connect()
+            with con.cursor() as cursor:
+                copy_ko_acls(cursor, ko, wob)
+                con.commit()
     return wob
 
 
