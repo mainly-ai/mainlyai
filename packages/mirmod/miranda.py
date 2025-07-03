@@ -2197,6 +2197,28 @@ def transact_credits(
         con.commit()
 
 
+def get_message(sc: Security_context, subject: str):
+    """
+    Fetch the next message for a subject from the message queue.
+    """
+    assert subject is not None, "target is required"
+    try:
+        con = sc.connect()
+        with con.cursor(dictionary=True) as cur:
+            cur.callproc("get_own_wob_message", (subject,))
+            con.commit()
+            rs = cur.stored_results()
+            if rs is not None and len(rs) > 0:
+                logger.debug(rs)
+                return rs[0].fetchone()
+    except mysql.connector.ProgrammingError as err:
+        logger.error(err.msg)
+    except mysql.connector.Error as err:
+        logger.error(err)
+
+    return None
+
+
 def is_uv_venv():
     try:
         venv_path = os.environ.get("VIRTUAL_ENV", "")

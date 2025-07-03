@@ -21,6 +21,7 @@ class Compute_resource_group(Base_object_ORM):
         "cost_per_net_rx_gb": "t.`cost_per_net_rx_gb` as `cost_per_net_rx_gb`",
         "cost_per_net_tx_gb": "t.`cost_per_net_tx_gb` as `cost_per_net_tx_gb`",
         "deployment_base_url": "t.deployment_base_url as deployment_base_url",
+        "operator_user_id": "t.operator_user_id as operator_user_id",
     }
     sql_compute_resource_group_ORM.update(Base_object_ORM.metadata)
 
@@ -38,6 +39,7 @@ class Compute_resource_group(Base_object_ORM):
             "cost_per_net_rx_gb": 0.000,
             "cost_per_net_tx_gb": 0.000,
             "deployment_base_url": None,
+            "operator_user_id": None,
         }
         self.id = id
         self.sctx = sc
