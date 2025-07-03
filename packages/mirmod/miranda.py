@@ -2207,10 +2207,8 @@ def get_message(sc: Security_context, subject: str):
         with con.cursor(dictionary=True) as cur:
             cur.callproc("get_own_wob_message", (subject,))
             con.commit()
-            rs = cur.stored_results()
-            if rs is not None and len(rs) > 0:
-                logger.debug(rs)
-                return rs[0].fetchone()
+            for result in cur.stored_results():
+                return result.fetchall()[0]
     except mysql.connector.ProgrammingError as err:
         logger.error(err.msg)
     except mysql.connector.Error as err:
