@@ -391,6 +391,9 @@ wheels = [
 name = "localbot"
 version = "0.0.1"
 source = { virtual = "apps/localbot" }
+dependencies = [
+    { name = "ulid2" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -400,6 +403,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "ulid2" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1087,6 +1091,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be760d75c2c42e2780dc0873fe382da3e98a2e1e48361e5/tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9", size = 196380 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839 },
+]
+
+[[package]]
+name = "ulid2"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/69/121a5f5ed7e107a6c66099c144edd79f30111ae778102da02084250c32e8/ulid2-0.3.0.tar.gz", hash = "sha256:915b18c75b735537d7d39cb1ba8fa8c05073ddef3ed2fe7d2e35426a63c0cf70", size = 4365 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/2f/179c239d918cc9ab1fe2f4e42d24bc0017e36539b74e119b87417124a200/ulid2-0.3.0-py2.py3-none-any.whl", hash = "sha256:eaf0d39ad3cedb644247b69161cc87e32009aebb1420eccfd037b6a55a20329c", size = 4376 },
 ]
 
 [[package]]
