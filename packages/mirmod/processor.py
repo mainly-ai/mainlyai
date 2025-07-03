@@ -33,11 +33,25 @@ import importlib.util
 import re
 import subprocess
 from datetime import datetime
+import copy
+import asyncio
+import nest_asyncio
 
 pickle.settings["recurse"] = True
 pickle.load_types(pickleable=True, unpickleable=True)
+nest_asyncio.apply()
+
 
 _the_global_context = {"process_context": {}, "web_server_thread": None}
+
+##########################
+# execute_node() exit codes.
+E_PROCEED_TO_NEXT_NODE = 0  # normal execution; mark node as executed and move instr ptr
+E_MODIFIED_PLAN = (
+    1  # execution plan is modified; trust the changes and don't change anything.
+)
+E_SKIP_NODE = 2  # node was already executed. Move to next.
+##########################
 
 
 def write_process_context_to_disk():
@@ -292,13 +306,6 @@ class CommandActor(CommandActorBase):
         self.docker_job = docker_job
         self.trigger_run = False
         self.deployed = deployed
-        # try:
-        #  with open("{}_RUN".format(ko.id),"r") as fh:
-        #    print ("|=> Resuming execution after setup.")
-        #    self.trigger_run = True
-        #  os.remove("{}_RUN".format(ko.id))
-        # except:
-        #  pass
         k = "{}_RUN".format(ko.id)
         self.trigger_run = k in _the_global_context["process_context"]
         if self.trigger_run:
@@ -369,8 +376,6 @@ class CommandActor(CommandActorBase):
                     didnt_get_any_notification = True
                 except Exception:
                     # NOTE: Error is 2013: Lost connection to MySQL server during query which is expected.
-                    # traceback.print_exc(file=sys.stdout)
-                    # print (e)
                     if len(debug_prompt) > 0:
                         print("|=> Woke up from sleep.", debug_prompt)
                     else:
@@ -401,7 +406,6 @@ class CommandActor(CommandActorBase):
             return self.command
         self.send_response({"status": self.ready_signal})
         rows = None
-        # docker_id = ec.docker_job_id
         self.clear_command_queue()
         print("|=> Waiting for debug command...")
         sleep_time = Sleep_time(min=2, max=60 * 60 * 2, steps=20, exponential=True)
@@ -438,7 +442,7 @@ class CommandActor(CommandActorBase):
             try:
                 miranda.notify_gui(self.sctx, json.dumps(message))
             except Exception as e:
-                logger.debug("notify_gui failed: ", e)
+                print("DEBUG: notify_gui failed: ", e)
             # print ("|=> {}".format(message))
 
     def close(self):
@@ -490,8 +494,6 @@ class MirandaDebugger(bdb.Bdb):
         hit_breakpoint = (func_name, line) in self.breakpoints
         jaction = {"action": "break", "data": {}}
         header_offset = INJECTED_HEADER_SIZE
-        # if hit_breakpoint:
-        #    self.ca.send_response(f"Breakpoint hit in {func_name}")
         if hit_breakpoint or self.tracing:
             try:
                 jaction["data"] = {
@@ -618,7 +620,7 @@ def construct_property_edge_list(sc, NG, cache):
             "Can't find destination object with metadata_id {}".format(e[1])
         )
         attr: dict = miranda.get_edge_attribute(sc, src_ob, dst_ob)
-        if attr is not None:
+        if attr is None:
             for receiver in attr.keys():
                 tr = attr[receiver]
                 a = {
@@ -701,12 +703,11 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                         make_wob_runtime_code(wob, wob_key),
                         WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
                     )
-            except Exception as e:
+            except Exception:
                 print(
                     '|=> WARNING: Skipping code block "{}" ({}) because it failed to compile'.format(
                         wob.name, wob.metadata_id
-                    ),
-                    e,
+                    )
                 )
                 print(process_traceback(INJECTED_HEADER_SIZE))
                 continue
@@ -760,12 +761,11 @@ def load_default_values(G, cached_wobs, code_cache):
                     value = float(value)
             try:
                 receiver.receive(wob_code.wob, value)
-            except Exception as e:
+            except Exception:
                 print(
-                    '|=> WARNING: Failed to set default value \'{}\' for attribute "{}" in code block "{}" ({})'.format(
+                    '|=> WARNING: Failed to set default value \'{}\' for attribute "{}" in code block "{}" ({})'.format(
                         value, attr, wob.name, wob.metadata_id
-                    ),
-                    e,
+                    )
                 )
                 print(process_traceback(INJECTED_HEADER_SIZE))
                 pass
@@ -791,6 +791,7 @@ class _Execution_context(Execution_context_api):
         deployed=False,
     ):
         global _the_global_context
+        self.deployed = deployed
         self.debugger: MirandaDebugger = MirandaDebugger(
             CommandActor(sc, docker_job, ko, deployed=deployed), self
         )
@@ -887,8 +888,6 @@ class _Execution_context(Execution_context_api):
         self.stage = "Not initialized"
         """The previous node is the metadata_id of the previous node in the execution plan."""
         self.previous_node: pg.Execution_node = None
-        """The previous execution context is the execution context that was active before this one. This is used to restore the previous execution context when this one is done."""
-        self.previous_execution_context: _Execution_context = None
         """A dictionary of all nodes that have been executed. The key is the metadata_id of the node."""
         self._has_executed: dict = {}
         """A dictionary of the number of edges that have been received for each node. The key is the metadata_id of the node."""
@@ -928,6 +927,12 @@ class _Execution_context(Execution_context_api):
 
         self.cached_iterator_response = {}
 
+        """The current field exception handler."""
+        self.current_exception_handler = None
+
+        """The field excepton handler stack"""
+        self.exception_handler_stack = []
+
     def enable_debug_mode(self):
         self.debug_mode = True
 
@@ -961,11 +966,13 @@ class _Execution_context(Execution_context_api):
         for mid in [n for n in s.field_nodes if n != s.transmitter_mid]:
             self._has_executed[mid] = False
             self.received_count[mid] = 0
-        self.cleanup_current_iterator(no_execution=False)
+        asyncio.get_running_loop().run_until_complete(
+            self.cleanup_current_iterator(no_execution=False)
+        )
         self.move_instruction_pointer()
         raise MirandaStopCurrentIterator
 
-    def cleanup_current_iterator(self, no_execution=False):
+    async def cleanup_current_iterator(self, no_execution=False):
         if self.active_iterator_field is not None:
             rmid = self.active_iterator_field.receiver_mid
             wob_code = self.code_cache[rmid]
@@ -981,6 +988,12 @@ class _Execution_context(Execution_context_api):
             receiver.receive(wob_code.wob, miranda.StopIterationToken)
             self.field_is_exhausted[self.active_iterator_field.id()] = True
             self.restart_loop = False
+
+            # pop exception handler stack
+            if len(self.exception_handler_stack) > 0:
+                self.current_exception_handler = self.exception_handler_stack.pop()
+            else:
+                self.current_exception_handler = None
 
             # receive from all other edges
             in_edges = in_edges = self.execution_graph.in_edges(rmid, data=True)
@@ -1020,7 +1033,9 @@ class _Execution_context(Execution_context_api):
             self.debugger.ca.send_response(jaction)
             if not no_execution:
                 try:
-                    execute_node(dst_code, dst_wob, dst_wob_key, self)
+                    self.current_node_idx = self._execution_plan_index[rmid]
+                    self.current_node = self.execution_plan[self.current_node_idx]
+                    await execute_node(dst_code, dst_wob, dst_wob_key, self)
                 except Exception as e:
                     dst_code.wob.executed["has_executed"] = False
                     handle_code_exception(self, dst_wob_key, e)
@@ -1157,6 +1172,66 @@ class _Execution_context(Execution_context_api):
     def set_requirements(self, r):
         self.requirements = r
 
+    def copy(self):
+        """
+        Return a deep‐copy of this execution context, sharing only:
+          - security_context
+          - docker_job (if it’s not deep‐copyable)
+          - web_server_thread, global_context, process_context
+        Everything else (plans, caches, graphs, iterators, etc.) is deep‐copied.
+        """
+        # 1) Create a brand‐new context (new debugger, same SC)
+        new_ctx = _Execution_context(
+            docker_job=self.docker_job,
+            ko=self.knowledge_object,
+            sc=self.security_context,
+            execution_plan=self.execution_plan,
+            cached_wobs=self.cached_wobs,
+            code_cache=self.code_cache,
+            # __init__ ignores start_idx internally, so we'll patch it below
+            start_idx=0,
+            target_wob_mid=self.target_wob_mid,
+            execution_graph=self.execution_graph,
+            deployed=self.deployed,
+        )
+
+        # 2) Copy over all mutable state except SC/thread/global
+        new_ctx.breakpoints = self.breakpoints
+        new_ctx.init_breakpoints = self.init_breakpoints
+        new_ctx.debug_mode = self.debug_mode
+        new_ctx.reload_graph = self.reload_graph
+        new_ctx.stop_debugger = self.stop_debugger
+        new_ctx.inbound_message = self.inbound_message
+        new_ctx.current_storage_policy = self.current_storage_policy
+
+        # share these (not deep‐copyable or meant to be shared)
+        new_ctx.web_server_thread = self.web_server_thread
+        new_ctx.global_context = self.global_context
+        new_ctx.process_context = self.process_context
+
+        new_ctx.caught_wob_error = self.caught_wob_error
+        new_ctx.requirements = list(self.requirements)
+
+        new_ctx.stage = self.stage
+        new_ctx.previous_node = self.previous_node
+
+        new_ctx._has_executed = {}
+        new_ctx.received_count = {}
+        new_ctx.field_is_exhausted = {}
+        new_ctx.iterators = {}
+
+        # fix up plan‐index and current‐node
+        new_ctx.current_node_idx = self.current_node_idx
+        new_ctx.current_node = self.current_node
+
+        new_ctx.current_execution_graph = self.current_execution_graph
+        new_ctx.eof = self.eof
+        new_ctx.active_iterator_field = copy.copy(self.active_iterator_field)
+        new_ctx.iterator_stack = copy.copy(self.iterator_stack)
+        new_ctx.cached_iterator_response = {}
+        set_current_execution_context(new_ctx)
+        return new_ctx
+
 
 # ----------------- END: Execution context -----------------#
 
@@ -1261,12 +1336,12 @@ def restore_execution_context(execution_context: _Execution_context):
 
     # We need to recursively loop over all subroutines
     def recursive_restore(s: pg.Field_descriptor):
+        execution_context.field_is_exhausted[s.id()] = False
+        if s.id() in execution_context.cached_iterator_response:
+            del execution_context.cached_iterator_response[s.id()]
         for mid in s.field_nodes:
             execution_context._has_executed[mid] = False
-            execution_context.field_is_exhausted[s.id()] = False
             execution_context.received_count[mid] = 0
-            if s.id() in execution_context.cached_iterator_response:
-                del execution_context.cached_iterator_response[s.id()]
             # print ("|=> DEBUG: Resetting execution flag for {}".format(mid))
         for ss in s.contains_fields:
             recursive_restore(ss)
@@ -1365,10 +1440,16 @@ def handle_code_exception(execution_context, src_wob_key, e):
 
 
 def get_value_from_iterator(
-    subr, transmitter, src_code, execution_context, transmitter_key, wob
+    subr,
+    transmitter,
+    src_code,
+    execution_context: _Execution_context,
+    transmitter_key,
+    wob,
 ):
     """Returns a tuple of the value and a boolean indicating if the iterator is exhausted."""
     value = None
+    exception_handler = None
     if subr.id() in execution_context.cached_iterator_response:
         # The iterator response is the same for every adjacent node to the field socket.
         # Don't mix this with the iterator itself which is a generator that produce the response
@@ -1378,15 +1459,23 @@ def get_value_from_iterator(
         it_value = transmitter.transmit(src_code.wob)
         if not isinstance(it_value, tuple):
             raise Exception(
-                'Transmitter field "{}" in node "{}" did not return a proper iterator.'.format(
+                'Transmitter field "{}" in node "{}" did not return a proper iterator. The field iterator must be a tuple: (None | ExceptionHandler, iter())'.format(
                     transmitter_key, wob.name
                 )
             )
         # Every branch needs their own iterator, we store this in the execution context and the content is copied on a push.
         execution_context.iterators[subr.id()] = it_value
-        _, get_value = it_value
+        exception_handler, get_value = it_value
     else:
-        _, get_value = execution_context.iterators[subr.id()]
+        exception_handler, get_value = execution_context.iterators[subr.id()]
+    if exception_handler is not None:
+        if execution_context.current_exception_handler != exception_handler:
+            if exception_handler != execution_context.current_exception_handler:
+                execution_context.exception_handler_stack.append(
+                    execution_context.current_exception_handler
+                )
+            execution_context.current_exception_handler = exception_handler
+
     value = next(get_value)
     execution_context.cached_iterator_response[subr.id()] = value
     return value
@@ -1422,7 +1511,7 @@ def dbug_execute(execution_context: _Execution_context, wob_key: int, code) -> b
     return False
 
 
-def process_edge(
+async def process_edge(
     src_wob,
     src_transmitter_key,
     dst_wob,
@@ -1440,13 +1529,16 @@ def process_edge(
     # TRANSMIT -------------------------------------------------
     if src_transmitter_key not in src_code.wob.attributes:
         print(
-            '|=> ERROR: Node {} doesn\'t have a transmitter field named "{}"'.format(
+            "|=> ERROR: Node {} doesn't have a transmitter field "
+            '"named "{}"\nMaybe you have a ghost edge?'.format(
                 src_wob.name, src_transmitter_key
             )
         )
+        return False  # Skip this edge as it is a ghost edge
     transmitter = src_code.wob.attributes[src_transmitter_key]
     receiver = dst_code.wob.attributes[dst_receiver_key]
-    # If this is a transmitter field then the the output is an iterator and we need to extract the value before we transmit it to the receiver.
+    # If this is a transmitter field then the the output is an iterator and we need
+    # to extract the value before we transmit it to the receiver.
     try:
         if isinstance(transmitter, Transmitter_field):
             # is there a delayed initialization associated with this field?
@@ -1458,7 +1550,8 @@ def process_edge(
                 execution_context._has_executed[s.receiver_mid] = False
                 execution_context.received_count[s.receiver_mid] = 0
 
-            # Look up transmitter to get the responsible collector. If the transmitter is the first transmitter in the chain, push the execution context.
+            # Look up transmitter to get the responsible collector. If the transmitter is the
+            # first transmitter in the chain, push the execution context.
             s = set_active_iterator(src_wob_key, src_transmitter_key, execution_context)
             if execution_context.check_field_is_exhausted():
                 return
@@ -1490,9 +1583,10 @@ def process_edge(
             execution_context.cached_iterator_response = {}
     except StopIteration:
         # We get here if we either failed to peek ahead or if the field was empty to begin with.
-        execution_context.cleanup_current_iterator()
+        await execution_context.cleanup_current_iterator()
         execution_context.move_instruction_pointer()
-        raise StopIteration  # stop processing
+        # Translate StopIteration exception to bypass the special translation rule in PEP 479.
+        raise MirandaStopCurrentIterator
     except MirandaStopCurrentIterator:
         pass  # A receiver field was forcefully stopped.
     except Exception as e:
@@ -1501,7 +1595,7 @@ def process_edge(
     return False  # continue processing
 
 
-def execute_if_no_inbound_edges(
+async def execute_if_no_inbound_edges(
     src_wob, src_code, execution_context: _Execution_context
 ):
     src_wob_key = src_wob.metadata_id
@@ -1518,12 +1612,18 @@ def execute_if_no_inbound_edges(
             execution_context.cached_wobs,
         )
         try:
-            if execute_node(src_code, src_wob, src_wob_key, execution_context):
+            res = await execute_node(src_code, src_wob, src_wob_key, execution_context)
+            if res == E_SKIP_NODE:
+                # node was already executed; move to next node.
                 execution_context.current_node = old_current_node
                 return True
         except MirandaDebuggerStopException:
             execution_context.current_node = old_current_node
             return True  # stop processing
+        except StopIteration as e:
+            raise e
+        except StopAsyncIteration as e:
+            raise e
         except Exception as e:
             handle_code_exception(execution_context, src_wob_key, e)
             execution_context.caught_wob_error = src_wob_key
@@ -1532,7 +1632,7 @@ def execute_if_no_inbound_edges(
         execution_context.current_node = old_current_node
 
 
-def execute_dispatches(dispatcher_mid, execution_context: _Execution_context):
+async def execute_dispatches(dispatcher_mid, execution_context: _Execution_context):
     en: pg.Execution_node = execution_context.find_node_by_mid(dispatcher_mid)
     dispatches = en.get_dispatches()
     executed_atleast_one_plan = True
@@ -1573,7 +1673,7 @@ def execute_dispatches(dispatcher_mid, execution_context: _Execution_context):
             execution_context.executable_nodes.add(dispatcher_mid)
             # print ("field_exhausted= ", execution_context.field_is_exhausted)
             if not execution_context.field_is_exhausted.get(field.id(), False):
-                execute_plan(
+                await execute_plan(
                     execution_context,
                     execution_context.cached_wobs,
                     execution_context.code_cache,
@@ -1597,15 +1697,52 @@ def execute_dispatches(dispatcher_mid, execution_context: _Execution_context):
     execution_context.current_node_idx = old_execution_plan_index
 
 
-def execute_plan(
+def async_execute_plan(
     execution_context: _Execution_context, cached_wobs, code_cache, in_dispatch=False
 ):
+    coroutine_object = execute_plan(
+        execution_context, cached_wobs, code_cache, in_dispatch
+    )
+    try:
+        loop = asyncio.get_running_loop()
+        print(
+            f"|=> INFO: An event loop is already running: {loop}. Attempting to run coroutine on it."
+        )
+        # This relies on the loop supporting re-entrant run_until_complete
+        # (e.g., if nest_asyncio has been applied, common in Jupyter).
+        result = loop.run_until_complete(coroutine_object)
+        print(f"|=> INFO: Async execution result (on existing loop): {result}")
+
+    except RuntimeError as e:
+        if "no running event loop" in str(e).lower():
+            # No event loop is running. Use asyncio.run().
+            print("|=> INFO: No event loop running. Using asyncio.run().")
+            result = asyncio.run(coroutine_object)
+            print(f"|=> INFO: Async execution result (via asyncio.run): {result}")
+        elif "already running" in str(e).lower():
+            # This means get_running_loop() succeeded, but loop.run_until_complete failed
+            # because the loop is strictly non-re-entrant (nest_asyncio not active).
+            print(
+                f"|=> ERROR: Event loop {loop} is already running and does not support re-entrant "
+                "execution for synchronous blocking (e.g., nest_asyncio is not active)."
+            )
+            # Depending on policy, you might raise, log, or attempt a fallback.
+            # For this example, we'll re-raise as it's a significant issue for this path.
+            raise
+        else:
+            raise  # Re-raise other RuntimeErrors
+
+
+async def execute_plan(
+    execution_context: _Execution_context, cached_wobs, code_cache, in_dispatch=False
+):
+    set_current_execution_context(execution_context)
     order_of_execution = execution_context.execution_plan
     while True:
         if execution_context.caught_wob_error > -1:
             break
         if execution_context.current_node_idx >= len(execution_context.execution_plan):
-            print("|=> DONE!")
+            print("|=> INFO: DONE!")
             break
         execution_context.current_node = order_of_execution[
             execution_context.current_node_idx
@@ -1614,8 +1751,8 @@ def execute_plan(
             # Is it a dispatch node? If so this is an opportune moment to execute it.
             d = execution_context.current_node.get_dispatches()
             if not in_dispatch and len(d) > 0:
-                execute_dispatches(
-                    execution_context.current_node.node_mid, execution_context
+                await execute_dispatches(
+                    execution_context.current_node.node_mid, execution_context.copy()
                 )
             execution_context.move_instruction_pointer()
             continue  # Skip nodes which has already been executed
@@ -1633,9 +1770,9 @@ def execute_plan(
             if len(d) > 0 and not in_dispatch:
                 src_wob = cached_wobs[execution_context.current_node.node_mid]
                 src_code = code_cache[execution_context.current_node.node_mid]
-                execute_if_no_inbound_edges(src_wob, src_code, execution_context)
-                execute_dispatches(
-                    execution_context.current_node.node_mid, execution_context
+                await execute_if_no_inbound_edges(src_wob, src_code, execution_context)
+                await execute_dispatches(
+                    execution_context.current_node.node_mid, execution_context.copy()
                 )
             execution_context.move_instruction_pointer()
             continue
@@ -1656,7 +1793,10 @@ def execute_plan(
                 )
                 src_wob = cached_wobs[src_wob_key]
                 src_code = code_cache[src_wob_key]
-                if execute_if_no_inbound_edges(src_wob, src_code, execution_context):
+                res = await execute_if_no_inbound_edges(
+                    src_wob, src_code, execution_context
+                )
+                if res:
                     return
 
                 dst_wob = cached_wobs[dst_wob_key]
@@ -1665,7 +1805,7 @@ def execute_plan(
                 for e in attr:
                     src_transmitter_key = e["source_transmitter_key"]
                     dst_receiver_key = e["destination_receiver_key"]
-                    if process_edge(
+                    res = await process_edge(
                         src_wob,
                         src_transmitter_key,
                         dst_wob,
@@ -1673,7 +1813,8 @@ def execute_plan(
                         src_code,
                         dst_code,
                         execution_context,
-                    ):
+                    )
+                    if res:
                         # a stop debug command was initiated. We need to return to the top of the loop.
                         return
                     #
@@ -1690,6 +1831,7 @@ def execute_plan(
                     pg.in_degree(execution_context.execution_graph, dst_wob_key)
                     <= execution_context.received_count[dst_wob_key]
                 ):
+                    node_exec_result = E_PROCEED_TO_NEXT_NODE
                     if execution_context.restart_loop:
                         s = execution_context.active_iterator_field
                         for mid in [n for n in s.field_nodes if n != s.transmitter_mid]:
@@ -1700,13 +1842,16 @@ def execute_plan(
                         execution_context.restart_loop = False
                     else:
                         try:
-                            if execute_node(
+                            node_exec_result = await execute_node(
                                 dst_code, dst_wob, dst_wob_key, execution_context
-                            ):
+                            )
+                            if (
+                                node_exec_result == E_SKIP_NODE
+                            ):  # Node has already been executed.
                                 execution_context.move_instruction_pointer()
                                 continue
                         except MirandaStopCurrentIterator as e:
-                            raise StopIteration
+                            raise e
                         except Exception as e:
                             if in_dispatch:
                                 raise e
@@ -1715,14 +1860,18 @@ def execute_plan(
                             execution_context.caught_wob_error = dst_wob_key
                             break  # Don't mark this node as executed and exit edge loop
                         # Make sure we're not executing this node again in this execution context.
-                        execution_context.mark_as_executed(dst_wob_key)
+                        if node_exec_result == E_PROCEED_TO_NEXT_NODE:
+                            # Only mark the node as executed if execution plan hasn't changed.
+                            execution_context.mark_as_executed(dst_wob_key)
                         d = execution_context.current_node.get_dispatches()
                         if not in_dispatch and len(d) > 0:
-                            execute_dispatches(
+                            await execute_dispatches(
                                 execution_context.current_node.node_mid,
-                                execution_context,
+                                execution_context.copy(),
                             )
                         # If the executing node was a Receiver_field and the iterator stack isn't empty we pop it.
+                        # Note that this happens regardless of node execution result because it isn't allowed to
+                        # change the execution plan at this point.
                         if (
                             pg.has_receiver_field(
                                 execution_context.execution_graph,
@@ -1735,44 +1884,108 @@ def execute_plan(
                             restore_execution_context(execution_context)
                             execution_context.move_instruction_pointer()
                             break  #
-            execution_context.move_instruction_pointer()
+            if node_exec_result == E_PROCEED_TO_NEXT_NODE:
+                # Only move the instruction pointer if the current node is marked as been executed
+                # and we haven't modified the execution plan during node execution.
+                if execution_context.has_executed(
+                    execution_context.get_current_wob_metadata_id()
+                ):
+                    execution_context.move_instruction_pointer()
         except StopIteration:
             # Because we issued a StopIteration during process_edge (but not execute) we did not move_instruction_pointer()
             # This means the instruction pointer now points on the receiver field as a consequence of the
             # iterator clean up routine. This should be made more implicit as it is hard to track in the code.
             pass
+        except MirandaStopCurrentIterator:
+            pass  # A receiver field was forcefully stopped.
         # continue with while loop
         # print ("DEBUG loop")
 
     if execution_context.caught_wob_error > -1:
         print("|=> ERROR: Execution was interrupted due to an error WOB code.")
     else:
-        print("|=> Successfully executed {} nodes.".format(len(order_of_execution)))
-    assert execution_context.previous_execution_context is None, (
-        "ERROR: Execution context stack is not empty. Active iterator: {}".format(
-            execution_context.active_iterator_field
+        print(
+            "|=> INFO: Successfully executed {} nodes.".format(len(order_of_execution))
         )
-    )
     # print ("|=> Nodes executed in the following order:")
     # for i, msg in enumerate(execution_log):
     #  print ("|=>   {}: {}".format(i, msg))
 
 
-def execute_node(dst_code, dst_wob, dst_wob_key, execution_context):
+async def f_next_element(execution_context: _Execution_context):
+    # print("f_next_element")
+    s = execution_context.active_iterator_field
+    for mid in [n for n in s.field_nodes if n != s.transmitter_mid]:
+        execution_context._has_executed[mid] = False
+        execution_context.received_count[mid] = 0
+    idx = execution_context._execution_plan_index[s.transmitter_mid]
+    execution_context.cached_iterator_response = {}  # clear cache to force new iteration
+    execution_context.move_instruction_pointer(absolute_idx=idx)
+
+
+async def f_exit(execution_context: _Execution_context):
+    # print("f_exit")
+    execution_context.stop_current_iterator()
+
+
+async def f_restart(execution_context: _Execution_context):
+    # print ("f_restart")
+    cur_itr_field = execution_context.active_iterator_field
+    idx = execution_context._execution_plan_index[cur_itr_field.transmitter_mid]
+    execution_context.cleanup_current_iterator(no_execution=True)
+    execution_context.move_instruction_pointer(absolute_idx=idx)
+
+
+async def f_restart_and_reinitialize(execution_context: _Execution_context):
+    assert False, "Not implemented yet."
+
+
+async def execute_node(
+    dst_code, dst_wob, dst_wob_key, execution_context: _Execution_context
+):
     if execution_context.current_node_has_been_executed():
-        return True  # skip nodes which has already been executed
+        return E_SKIP_NODE  # skip nodes which has already been executed
     # Call the node code.
     print(
-        '|=> All inbound edges received for "{}". Executing node.'.format(dst_wob.name)
+        '|=> INFO: All inbound edges received for "{}". Executing node.'.format(
+            dst_wob.name
+        )
     )
-    # execution_log.append(dst_wob.name)
     jaction = {"action": "running_node", "data": {"metadata_id": dst_wob.metadata_id}}
     execution_context.debugger.ca.send_response(jaction)
-    if not execution_context.debug_mode:
-        dst_code.wob._execute(dst_code.wob)
+    # if not execution_context.debug_mode: # Re-enable when we refactor debug
+    method_to_call = dst_code.wob._execute
+    args_for_call = [dst_code.wob]
+
+    hdl = execution_context.current_exception_handler
+    # print ("**** CURRENT_EXCEPTION_HANDLER: ", hdl)
+    # print ("**** len(EXCEPTION_HANDLER_STACK): ", len(execution_context.exception_handler_stack))
+    # inspect is assumed to be fast: 1 million checks ≈ 0.6 s of pure overhead
+    if inspect.iscoroutinefunction(
+        method_to_call.__func__ if inspect.ismethod(method_to_call) else method_to_call
+    ):
+        if hdl is not None:
+            ret = await hdl(execution_context, method_to_call, dst_code.wob)
+            while ret == miranda.F_TRY_AGAIN:
+                ret = await hdl(execution_context, method_to_call, dst_code.wob)
+            if ret == miranda.F_NEXT_ELEMENT:
+                await f_next_element(execution_context)
+                return E_MODIFIED_PLAN
+            elif ret == miranda.F_EXIT:
+                await f_exit(execution_context)
+                return E_MODIFIED_PLAN
+            elif ret == miranda.F_RESTART:
+                await f_restart(execution_context)
+                return E_MODIFIED_PLAN
+            elif ret == miranda.F_RESTART_AND_REINIT:
+                await f_restart_and_reinitialize(execution_context)
+                return E_MODIFIED_PLAN
+        else:
+            await method_to_call(*args_for_call)
     else:
-        dbug_execute(execution_context, dst_wob_key, dst_code)
-    return False
+        method_to_call(*args_for_call)
+
+    return E_PROCEED_TO_NEXT_NODE
 
 
 def prune_graph_for_deployment(NG: nx.DiGraph, cached_wobs: dict):
@@ -2113,9 +2326,8 @@ def create_execution_plan(NG, cached_wobs, code_cache):
     cycles = list(nx.simple_cycles(NG))
     if len(cycles) > 0:
         print(
-            "|=> WARNING: The execution graph contains {} simple cycles. This might cause unexpected behavior.".format(
-                len(cycles)
-            )
+            "|=> WARNING: The execution graph contains {} simple cycles. "
+            "This might cause unexpected behavior.".format(len(cycles))
         )
         for c in cycles:
             print("|=>  Cycle: {}".format(c))
@@ -2291,7 +2503,7 @@ def enter_interactive_mode(
     cached_wobs,
     code_cache,
     NG,
-    ca: CommandActorBase | None = None,
+    ca: CommandActorBase = None,
     run_as_deployed=False,
     first_execution=False,
     target_wob_mid=-1,
@@ -2355,7 +2567,9 @@ def enter_interactive_mode(
         # Tell GUI that we handled the command successfully.
         jaction = {"action": "run-setup", "data": {}}
         ca.send_response(jaction)
-        _ = cache_wobs(execution_context.get_security_context(), NG, all_wobs=True)
+        # all_wobs = cache_wobs(
+        #    execution_context.get_security_context(), NG, all_wobs=True
+        # )
         run_setup_for_all_code(execution_context)
     elif (
         cmd.startswith("start")
@@ -2436,8 +2650,8 @@ def enter_interactive_mode(
                         lines = cb.body.split("\n")
                         offset = [
                             i
-                            for i, line in enumerate(lines)
-                            if line.startswith("@wob.execute")
+                            for i, l in enumerate(lines)
+                            if l.startswith("@wob.execute")
                         ][0]
                         execution_context.breakpoints[wobid] = [
                             int(i - offset - INJECTED_HEADER_SIZE) for i in breakpoints
@@ -2454,7 +2668,7 @@ def enter_interactive_mode(
                         "ERROR: Failed to decode breakpoints: {}".format(enc_param)
                     )
                     return False, execution_context
-            execute_plan(execution_context, cached_wobs, code_cache)
+            async_execute_plan(execution_context, cached_wobs, code_cache)
 
         except Exception as e:
             ca.send_response("ERROR: enter_interactive_mode: {}".format(e))
@@ -2487,9 +2701,9 @@ def enter_interactive_mode(
             execution_context.breakpoints[wobid] = []
         cb: miranda.Code_block = cached_wobs[wobid]
         lines = cb.body.split("\n")
-        offset = [i for i, line in enumerate(lines) if line.startswith("@wob.execute")][
-            0
-        ]
+        offset = [
+            i for i, lines in enumerate(lines) if lines.startswith("@wob.execute")
+        ][0]
         execution_context.breakpoints[wobid].append(
             lineno - offset - INJECTED_HEADER_SIZE
         )  # -INJECTED_HEADER_SIZE because we inject two lines before the execute statement
@@ -2672,9 +2886,9 @@ def process_knowledge_object(
     if isinstance(message["payload"], str):
         # print ("DEBUG payload = ", message["payload"])
         message["payload"] = json.loads(message["payload"])
-    run_as_deployed: bool = bool(message["payload"].get("run_as_deployed", False))
+    run_as_deployed: bool = message["payload"].get("run_as_deployed", False)
     # run_as_deployed = True # DEBUG
-    debug_mode: bool = bool(message["payload"].get("debug_mode", False))
+    debug_mode: bool = message["payload"].get("debug_mode", False)
     target_wob_mid: int = -1
 
     # read process context
@@ -2808,7 +3022,7 @@ def process_knowledge_object(
             # if stop_execution:
             #  break # quit
         else:
-            execute_plan(execution_context, cached_wobs, code_cache)
+            async_execute_plan(execution_context, cached_wobs, code_cache)
             execution_context.move_instruction_pointer(0)
             execution_context._has_executed = {}
             execution_context.received_count = {}
