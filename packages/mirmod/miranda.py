@@ -1800,6 +1800,27 @@ def notify_gui(sc: Security_context, payload: str):
         con.commit()
 
 
+def send_realtime_message(
+    sc: Security_context,
+    payload: str,
+    ticket: str | None = None,
+    ko_id: int | None = None,
+):
+    """Send a realtime message to the subject wob."""
+    if ticket is None and ko_id is None:
+        con = sc.connect()
+        with con.cursor() as cur:
+            cur.callproc("sp_user_send_realtime_message", (payload,))
+            con.commit()
+    else:
+        assert ticket is not None, "ticket is required when ko_id is provided"
+        assert ko_id is not None, "ko_id is required when ticket is provided"
+        con = sc.connect()
+        with con.cursor() as cur:
+            cur.callproc("sp_ko_send_realtime_message", (ticket, ko_id, payload))
+            con.commit()
+
+
 def notify_gui_reload_node(sc: Security_context, ob):
     """Notifies the browser that a GUI element needs to be updated.
     The message is broadcasted to all existing websockets of the current user."""
