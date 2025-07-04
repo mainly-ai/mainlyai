@@ -389,6 +389,7 @@ def find_object_by_id(sc: Security_context, id: int, type: str = "CODE"):
     # return an instance of the object with the given id and type
     return table_to_object(type)(sc, id=id)
 
+
 def delete_object(obj, objid_array=None, cascading=False, hard=True):
     """Delete a Base_object_ORM by ID from the database. If an array of IDs is supplied then all corresponding objects will be deleted."""
     sctx = obj.sctx
@@ -1159,7 +1160,10 @@ def bulk_get_edge_attributes(sc, edge_keys):
         cur.execute(sql, edge_keys)
         for rs in cur:
             try:
-                j = json.loads(rs[2])
+                if rs[2] is not None:
+                    j = json.loads(rs[2])
+                else:
+                    j = None
                 yield (rs[0], rs[1], j)
             except Exception as e:
                 logger.error(
@@ -2241,7 +2245,7 @@ def get_message(sc: Security_context, subject: str):
             con.commit()
             for result in cur.stored_results():
                 rs = result.fetchall()
-                if len(rs)>0:
+                if len(rs) > 0:
                     return rs[0]
                 else:
                     return None
