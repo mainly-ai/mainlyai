@@ -25,6 +25,7 @@ class PolledEventHandler:
 
     def run(self):
         while True:
+            logging.debug("Polling for jobs")
             try:
                 job = miranda.get_message(self.sctx, "crg_1>job")
                 if job is None:

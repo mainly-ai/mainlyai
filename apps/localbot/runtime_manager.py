@@ -1,7 +1,9 @@
 import datetime
 import json
 import logging
+import os
 import shlex
+import shutil
 import subprocess
 import threading
 import ulid2
@@ -49,6 +51,18 @@ def start_runtime_thread(
     assert isinstance(job, dict)
     assert isinstance(payload, dict)
     assert "token" in payload
+    assert "rtmq_ticket" in payload, "rtmq_ticket is required for user-space runtimes"
+
+    context_path = os.path.join(config["paths"]["contexts"], str(ko_id))
+    if not os.path.exists(context_path):
+        logging.debug("Creating context directory: %s", context_path)
+        os.makedirs(context_path, exist_ok=True)
+    else:
+        logging.error(
+            "Context directory %s already exists, refusing to overwrite it. Ensure that all runtimes are properly stopped.",
+            context_path,
+        )
+        return
 
     ko = miranda.Knowledge_object(req_sc, id=ko_id)
 
@@ -90,6 +104,18 @@ def start_runtime_thread(
         ob.is_deployed = 1
     ob.update(req_sc)
 
+    miranda.send_realtime_message(
+        req_sc,
+        json.dumps(
+            {
+                "action": "new[DOCKER_JOB]",
+                "data": ob.__repr__("jdict"),
+            }
+        ),
+        ticket=payload["rtmq_ticket"],
+        ko_id=ko.id,
+    )
+
     logging.info("Created Docker_job object %s %s", ob.id, ob.metadata_id)
 
     miranda_config = {
@@ -114,7 +140,7 @@ def start_runtime_thread(
         "DOCKER_JOB_ID": str(ob.id),
         "I_AM_IN_AN_ISOLATED_AND_SAFE_CONTEXT": "1",
         "RUST_BACKTRACE": "1",
-        "REALTIME_MESSAGE_TICKET": "",
+        "REALTIME_MESSAGE_TICKET": payload["rtmq_ticket"],
         "PYTHON_ENV_PATH": config["paths"]["python_env"],
     }
     env_str = ""
@@ -134,6 +160,7 @@ def start_runtime_thread(
         check=True,
         text=True,
         env=env,
+        cwd=context_path,
     )
     logging.info("Result: %s", result)
 
@@ -184,4 +211,8 @@ class RuntimeManager:
             logging.warning("Runtime does not exist for project %s", ko_id)
             return
         self.runtimes[ko_id].stop()
+        context_path = os.path.join(self.config["paths"]["contexts"], str(ko_id))
+        if os.path.exists(context_path):
+            logging.info("Removing context directory: %s", context_path)
+            shutil.rmtree(context_path)
         del self.runtimes[ko_id]

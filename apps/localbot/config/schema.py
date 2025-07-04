@@ -8,5 +8,6 @@ config_schema = {
         "logzod": str,
         "python_env": str,
         "processor": str,
+        "contexts": str,
     },
 }

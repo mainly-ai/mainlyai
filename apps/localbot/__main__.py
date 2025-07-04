@@ -1,4 +1,5 @@
 import logging
+import os
 
 from mirmod import miranda
 
@@ -48,6 +49,13 @@ def main():
             "Failed to create security context. Your auth token may be invalid."
         )
         return
+
+    context_path = os.path.expanduser(cfg["paths"]["contexts"])
+    if not os.path.exists(context_path):
+        logging.info(f"Context path {context_path} does not exist, creating it")
+        os.makedirs(context_path, exist_ok=True)
+    else:
+        logging.debug(f"Context path: {context_path}")
 
     if cfg["poll_mode"]:
         logging.info("Starting in poll mode")

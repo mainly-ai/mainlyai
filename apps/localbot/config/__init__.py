@@ -48,6 +48,7 @@ def get_default_config():
             "logzod": "~/.cargo/bin/logzod",
             "python_env": os.environ.get("PYTHON_ENV_PATH", ""),
             "processor": "-m mirmod.processor",
+            "contexts": "./contexts",
         },
     }
 
