@@ -73,7 +73,7 @@ def start_runtime_thread(
     # some of these fields are legacy and not really used anymore
     # but we need to set them to something anyways
     ob.docker_env_vars = ""
-    ob.docker_sudo = ""
+    ob.docker_sudo = 0
     ob.docker_network = ""
     ob.gpu_capacity = (
         int(payload["requested_gpus"]) if "requested_gpus" in payload else 0
@@ -122,12 +122,14 @@ def start_runtime_thread(
         env_str += f"{k}={shlex.quote(v)} "
     logging.debug("Environment variables: %s", env_str)
 
+    cmd = "{} {}/bin/python {}".format(
+        config["paths"]["logzod"],
+        config["paths"]["python_env"],
+        config["paths"]["processor"],
+    )
+    logging.debug("Executing " + cmd)
     result = subprocess.run(
-        "{} {}/bin/python {}".format(
-            config["paths"]["logzod"],
-            config["paths"]["python_env"],
-            config["paths"]["processor"],
-        ),
+        cmd,
         shell=True,
         check=True,
         text=True,

@@ -25,9 +25,9 @@ def main():
 
     try:
         cfg = config.read_config("localbot.yml")
-    except Exception:
+    except Exception as e:
         if not args.token:
-            logging.error("No auth token provided")
+            logging.error("No auth token provided: {}".format(e))
             return
 
         cfg = config.write_config({"auth_token": args.token}, "localbot.yml")

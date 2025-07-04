@@ -45,9 +45,9 @@ nest_asyncio.apply()
 _the_global_context = {"process_context": {}, "web_server_thread": None}
 ##########################
 # execute_node() exit codes.
-E_PROCEED_TO_NEXT_NODE= 0 # normal execution; mark node as executed and move instr ptr
-E_MODIFIED_PLAN = 1 # execution plan is modified; trust the changes and don't change anything.
-E_SKIP_NODE = 2 # node was already executed. Move to next.
+E_PROCEED_TO_NEXT_NODE = 0  # normal execution; mark node as executed and move instr ptr
+E_MODIFIED_PLAN = 1  # execution plan is modified
+E_SKIP_NODE = 2  # node was already executed. Move to next.
 ##########################
 
 
@@ -617,7 +617,7 @@ def construct_property_edge_list(sc, NG, cache):
             "Can't find destination object with metadata_id {}".format(e[1])
         )
         attr: dict = miranda.get_edge_attribute(sc, src_ob, dst_ob)
-        if attr is None:
+        if attr is not None:
             for receiver in attr.keys():
                 tr = attr[receiver]
                 a = {
@@ -1012,7 +1012,7 @@ class _Execution_context(Execution_context_api):
                     # receive from all other edges but the receiver edge that triggered this call.
                     if dst_receiver_key == receiver_attribute:
                         continue
-                    if process_edge(
+                    if await process_edge(
                         src_wob,
                         src_transmitter_key,
                         dst_wob,
@@ -1929,7 +1929,9 @@ async def f_restart(execution_context: _Execution_context):
     # print ("f_restart")
     cur_itr_field = execution_context.active_iterator_field
     idx = execution_context._execution_plan_index[cur_itr_field.transmitter_mid]
-    execution_context.cleanup_current_iterator(no_execution=True)
+    execution_context.cached_iterator_response = {}
+    execution_context._has_executed[cur_itr_field.transmitter_mid] = False
+    await execution_context.cleanup_current_iterator(no_execution=True)
     execution_context.move_instruction_pointer(absolute_idx=idx)
 
 

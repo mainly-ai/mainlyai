@@ -389,7 +389,6 @@ def find_object_by_id(sc: Security_context, id: int, type: str = "CODE"):
     # return an instance of the object with the given id and type
     return table_to_object(type)(sc, id=id)
 
-
 def delete_object(obj, objid_array=None, cascading=False, hard=True):
     """Delete a Base_object_ORM by ID from the database. If an array of IDs is supplied then all corresponding objects will be deleted."""
     sctx = obj.sctx
@@ -2220,7 +2219,11 @@ def get_message(sc: Security_context, subject: str):
             cur.callproc("get_own_wob_message", (subject,))
             con.commit()
             for result in cur.stored_results():
-                return result.fetchall()[0]
+                rs = result.fetchall()
+                if len(rs)>0:
+                    return rs[0]
+                else:
+                    return None
     except mysql.connector.ProgrammingError as err:
         logger.error(err.msg)
     except mysql.connector.Error as err:
