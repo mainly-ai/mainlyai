@@ -924,11 +924,11 @@ class _Execution_context(Execution_context_api):
 
         self.cached_iterator_response = {}
 
-        """The current field exception handler."""
+        """The current exception handler"""
         self.current_exception_handler = None
 
         """The field excepton handler stack"""
-        self.exception_handler_stack = []
+        self.active_exception_handlers = {}
 
     def enable_debug_mode(self):
         self.debug_mode = True
@@ -987,10 +987,9 @@ class _Execution_context(Execution_context_api):
             self.restart_loop = False
 
             # pop exception handler stack
-            if len(self.exception_handler_stack) > 0:
-                self.current_exception_handler = self.exception_handler_stack.pop()
-            else:
-                self.current_exception_handler = None
+            if self.active_iterator_field.id() in self.active_exception_handlers:
+                del self.active_exception_handlers[self.active_iterator_field.id()]
+            self.current_exception_handler = None
 
             # receive from all other edges
             in_edges = in_edges = self.execution_graph.in_edges(rmid, data=True)
@@ -1467,11 +1466,11 @@ def get_value_from_iterator(
         exception_handler, get_value = execution_context.iterators[subr.id()]
     if exception_handler is not None:
         if execution_context.current_exception_handler != exception_handler:
-            if exception_handler != execution_context.current_exception_handler:
-                execution_context.exception_handler_stack.append(
-                    execution_context.current_exception_handler
-                )
-            execution_context.current_exception_handler = exception_handler
+            execution_context.active_exception_handlers[subr.id()] = (
+                execution_context.current_exception_handler
+            )
+
+    execution_context.current_exception_handler = exception_handler
 
     value = next(get_value)
     execution_context.cached_iterator_response[subr.id()] = value
@@ -1928,10 +1927,34 @@ async def f_exit(execution_context: _Execution_context):
 async def f_restart(execution_context: _Execution_context):
     # print ("f_restart")
     cur_itr_field = execution_context.active_iterator_field
-    idx = execution_context._execution_plan_index[cur_itr_field.transmitter_mid]
-    execution_context.cached_iterator_response = {}
+
+    # Make sure all nodes in the field can re-execute.
     execution_context._has_executed[cur_itr_field.transmitter_mid] = False
-    await execution_context.cleanup_current_iterator(no_execution=True)
+    execution_context.received_count[cur_itr_field.transmitter_mid] = 0
+    s = execution_context.active_iterator_field
+    for mid in [n for n in s.field_nodes if n != s.transmitter_mid]:
+        execution_context._has_executed[mid] = False
+        execution_context.received_count[mid] = 0
+    if len(execution_context.iterator_stack) > 0:
+        execution_context.active_iterator_field = execution_context.iterator_stack.pop()
+    else:
+        execution_context.active_iterator_field = None
+
+    # Remove current field execption handler because we
+    # will receive a new one.
+    if cur_itr_field.id() in execution_context.active_exception_handlers:
+        del execution_context.active_exception_handlers[cur_itr_field.id()]
+    execution_context.current_exception_handler = None
+    # Remove the active iterator as it will be recreated.
+    del execution_context.iterators[s.id()]
+    # Clear the previous iterator cached response.
+    execution_context.cached_iterator_response = {}
+    # Ensure that we restart the loop and that the new iterator field isn't
+    # marked as exhausted.
+    execution_context.field_is_exhausted[s.id()] = False
+    # Finally move the instruction to the node that initialised the
+    # iterator field.
+    idx = execution_context._execution_plan_index[cur_itr_field.transmitter_mid]
     execution_context.move_instruction_pointer(absolute_idx=idx)
 
 
@@ -2442,7 +2465,7 @@ def reload_graph(docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1
     return (execution_context, order_of_execution, cached_wobs, code_cache, NG)
 
 
-def reload_current_node(execution_context: _Execution_context):
+async def reload_current_node(execution_context: _Execution_context):
     """Find the current wob in the execution context and reloads it from the database into the cache"""
     if execution_context.caught_wob_error == -1:
         wob_mid = execution_context.get_current_wob_metadata_id()
@@ -2484,7 +2507,7 @@ def reload_current_node(execution_context: _Execution_context):
                 src_transmitter_key = attr["source_transmitter_key"]
                 dst_receiver_key = attr["destination_receiver_key"]
                 # print ("|=> DEBUG: Reloading edge: {}:{} -> {}:{}".format(src_wob.name, src_transmitter_key, dst_wob.name, dst_receiver_key))
-                process_edge(
+                await process_edge(
                     src_wob,
                     src_transmitter_key,
                     dst_wob,
@@ -2496,7 +2519,7 @@ def reload_current_node(execution_context: _Execution_context):
                 )
 
 
-def enter_interactive_mode(
+async def enter_interactive_mode(
     execution_context: _Execution_context,
     order_of_execution,
     cached_wobs,
@@ -2602,7 +2625,7 @@ def enter_interactive_mode(
                 cmd.startswith("retry") or cmd.startswith("continue")
             ) and execution_context.caught_wob_error > -1:
                 # only reload the current node but keep the execution plan and context untouched.
-                reload_current_node(execution_context)
+                await reload_current_node(execution_context)
                 # reset the caught error state
                 execution_context.caught_wob_error = -1
                 # HACK: reset ready signal
@@ -2879,7 +2902,7 @@ def run_setup_code(
     exit(200)  # We use exit code 200 to indicate willful exit with restart.
 
 
-def process_knowledge_object(
+async def process_knowledge_object(
     sc, docker_job, ko: miranda.Knowledge_object, target_wob, message
 ):
     if isinstance(message["payload"], str):
@@ -3008,7 +3031,7 @@ def process_knowledge_object(
             # Assign collectors to transmitter fields
             execution_context.reload_graph = False
         if debug_mode and not run_as_deployed:
-            stop_execution, execution_context = enter_interactive_mode(
+            stop_execution, execution_context = await enter_interactive_mode(
                 execution_context,
                 order_of_execution,
                 cached_wobs,
@@ -3021,7 +3044,7 @@ def process_knowledge_object(
             # if stop_execution:
             #  break # quit
         else:
-            async_execute_plan(execution_context, cached_wobs, code_cache)
+            await execute_plan(execution_context, cached_wobs, code_cache)
             execution_context.move_instruction_pointer(0)
             execution_context._has_executed = {}
             execution_context.received_count = {}
@@ -3043,8 +3066,7 @@ def process_message(sc, docker_job, src_ob, dest_ob, message={}, use_time_delta=
     """
     # TODO fix this command pattern
     if isinstance(src_ob, miranda.Knowledge_object) and dest_ob is None:
-        process_knowledge_object(sc, docker_job, src_ob, dest_ob, message)
-
+        asyncio.run(process_knowledge_object(sc, docker_job, src_ob, dest_ob, message))
     return message
 
 
