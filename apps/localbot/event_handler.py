@@ -29,6 +29,7 @@ class PolledEventHandler:
             try:
                 job = miranda.get_message(self.sctx, "crg_1>job")
                 if job is None:
+                    time.sleep(self.poll_interval)
                     continue
                 logging.debug("Received job: %s", job)
                 payload = json.loads(job["payload"])
