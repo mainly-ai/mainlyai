@@ -1,4 +1,5 @@
 from .security.security_context import Security_context
+from .miranda_llm import ArgotModelProvider
 
 from .workflow_objects import (
     Code_block,
@@ -105,6 +106,9 @@ def wob_class_to_table(wob_class):
 def get_all_edge_labels():
     return [wob_class_to_table(o) for o in get_all_edge_classes()]
 
+
+llm = ArgotModelProvider(None, use_async=True)
+sync_llm = ArgotModelProvider(None, use_async=False)
 
 # Alias for backwards compatibility
 get_all_wob_classes = get_all_edge_classes
