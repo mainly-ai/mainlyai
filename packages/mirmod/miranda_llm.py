@@ -1,4 +1,4 @@
-from . import get_execution_context
+from .execution_context import get_execution_context
 import requests
 import niquests
 import json

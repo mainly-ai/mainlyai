@@ -293,7 +293,6 @@ def create_security_context(
             auth_string_is_already_hashed=auth_string_is_already_hashed,
             pool_size=pool_size,
         )
-        logger.info("Security context created")
         return sc
     except Exception as e:
         logger.error(
