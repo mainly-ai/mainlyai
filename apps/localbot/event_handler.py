@@ -40,7 +40,7 @@ class PolledEventHandler:
         while not self.exit_event.is_set():
             logging.debug("Polling for jobs")
             try:
-                job = miranda.get_message(self.sctx, "crg_1>job")
+                job = miranda.get_message(self.sctx, f"crg_{self.config['crg_id']}>job")
                 if job is None:
                     self.exit_event.wait(self.poll_interval)
                     continue
