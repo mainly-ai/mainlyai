@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.pyc
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -177,3 +178,6 @@ cython_debug/
 process_context.pickle
 WOB-*.py
 add_coauthors.sh
+
+# macOS
+.DS_Store

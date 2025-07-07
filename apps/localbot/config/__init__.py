@@ -34,19 +34,33 @@ def validate_config(config, schema, dir_level, branch_key):
             )
 
 
+def which(cmd):
+    for path in os.environ["PATH"].split(os.pathsep):
+        if os.path.exists(os.path.join(path, cmd)):
+            return os.path.join(path, cmd)
+    return None
+
+
 def get_default_config():
+    python_env = os.environ.get("PYTHON_ENV_PATH", os.environ.get("VIRTUAL_ENV", ""))
+    python_bin = which("python3") if python_env == "" else "/bin/python3"
+    logzod_bin = which("logzod")
+    if logzod_bin is None:
+        raise Exception("logzod not found in PATH")
     return {
         "auth_token": "",
-        "poll_mode": False,
+        "crg_id": 0,
+        "poll_mode": True,
         "poll_interval": 10,
         "db": {
             "host": "localhost",
-            "port": 3306,
+            "port": "3306",
             "database": "miranda",
         },
         "paths": {
-            "logzod": "~/.cargo/bin/logzod",
-            "python_env": os.environ.get("PYTHON_ENV_PATH", ""),
+            "logzod": logzod_bin,
+            "python_env": python_env,
+            "python": python_bin,
             "processor": "-m mirmod.processor",
             "contexts": "./contexts",
         },

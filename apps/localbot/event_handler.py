@@ -1,7 +1,9 @@
 import logging
 import time
 import json
+import threading
 from mirmod import miranda
+import signal
 
 from runtime_manager import RuntimeManager
 
@@ -22,14 +24,25 @@ class PolledEventHandler:
         self.sctx = miranda.create_security_context(temp_token=config["auth_token"])
         self.poll_interval = config["poll_interval"]
         self.runtime_manager = RuntimeManager(config)
+        self.exit_event = threading.Event()
+
+    def signal_handler(self, sig, frame):
+        logging.info("Exiting...")
+        try:
+            self.runtime_manager.kill_all_runtimes()
+            self.exit_event.set()
+        except Exception as e:
+            logging.exception("Error killing runtimes: %s", e)
 
     def run(self):
-        while True:
+        signal.signal(signal.SIGINT, self.signal_handler)
+
+        while not self.exit_event.is_set():
             logging.debug("Polling for jobs")
             try:
                 job = miranda.get_message(self.sctx, "crg_1>job")
                 if job is None:
-                    time.sleep(self.poll_interval)
+                    self.exit_event.wait(self.poll_interval)
                     continue
                 logging.debug("Received job: %s", job)
                 payload = json.loads(job["payload"])
@@ -55,4 +68,4 @@ class PolledEventHandler:
             except Exception as e:
                 logging.exception("Error processing job: %s", e)
                 pass
-            time.sleep(self.poll_interval)
+            self.exit_event.wait(self.poll_interval)

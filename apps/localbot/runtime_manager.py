@@ -37,14 +37,19 @@ class CallbackThread(threading.Thread):
     def run(self):
         # Execute the target function
         if self.target:
-            self.target(*self.args)
+            self.target(self._stop_event, *self.args)
         # If a callback is provided, execute it after the target function
         if self.callback:
             self.callback()
 
 
 def start_runtime_thread(
-    req_sc: miranda.Security_context, ko_id: int, job: dict, payload: dict, config: dict
+    stop_event: threading.Event,
+    req_sc: miranda.Security_context,
+    ko_id: int,
+    job: dict,
+    payload: dict,
+    config: dict,
 ):
     logging.info("Starting runtime for project %s", ko_id)
     assert isinstance(ko_id, int)
@@ -116,7 +121,7 @@ def start_runtime_thread(
         ko_id=ko.id,
     )
 
-    logging.info("Created Docker_job object %s %s", ob.id, ob.metadata_id)
+    logging.debug("Created Docker_job object %s %s", ob.id, ob.metadata_id)
 
     miranda_config = {
         "host": config["db"]["host"],
@@ -154,15 +159,130 @@ def start_runtime_thread(
         config["paths"]["processor"],
     )
     logging.debug("Executing " + cmd)
-    result = subprocess.run(
+
+    process = subprocess.Popen(
         cmd,
         shell=True,
-        check=True,
         text=True,
         env=env,
         cwd=context_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
-    logging.info("Result: %s", result)
+
+    # event to signal when process completes
+    process_done = threading.Event()
+    process_result = {"returncode": None, "stdout": None, "error": None}
+
+    def wait_for_process():
+        """Thread function to wait for process completion"""
+        try:
+            stdout, stderr = process.communicate()
+            process_result["returncode"] = process.returncode
+            process_result["stdout"] = stdout
+        except Exception as e:
+            process_result["error"] = e
+        finally:
+            process_done.set()
+
+    # start thread to wait for process
+    process_thread = threading.Thread(target=wait_for_process, daemon=True)
+    process_thread.start()
+
+    try:
+        # wait efficiently for either stop event or process completion
+        # Wait for either the stop event or process completion - completely poll-free!
+        # This approach uses a race condition between two blocking waits
+
+        # Use a single event to coordinate between the two possible outcomes
+        first_to_finish = threading.Event()
+        winner = {"source": None}  # Use dict instead of threading.local for simplicity
+
+        def wait_for_stop():
+            stop_event.wait()  # Block until stop event is set
+            if not first_to_finish.is_set():
+                winner["source"] = "stop"
+                first_to_finish.set()
+
+        def wait_for_process_done():
+            process_done.wait()  # Block until process is done
+            if not first_to_finish.is_set():
+                winner["source"] = "process"
+                first_to_finish.set()
+
+        # Start both waiting threads
+        stop_waiter = threading.Thread(target=wait_for_stop, daemon=True)
+        process_waiter = threading.Thread(target=wait_for_process_done, daemon=True)
+
+        stop_waiter.start()
+        process_waiter.start()
+
+        # Wait for the first one to finish - no polling at all!
+        first_to_finish.wait()
+
+        # Check which event won the race
+        if stop_event.is_set():
+            logging.debug("Stop event triggered, terminating process")
+            process.terminate()
+            try:
+                # wait a bit for graceful shutdown
+                if not process_done.wait(timeout=1):
+                    logging.warning("Process didn't terminate gracefully, killing it")
+                    process.kill()
+                process_thread.join(timeout=1)  # wait for thread cleanup
+            except Exception:
+                logging.warning("Error during graceful shutdown, forcing kill")
+                process.kill()
+                process_thread.join(timeout=1)
+
+            # Update workflow state to indicate the process has exited
+            try:
+                ob.workflow_state = "EXITED"
+                ob.update(req_sc)
+                logging.debug(
+                    "Updated workflow state to EXITED for Docker_job %s", ob.id
+                )
+            except Exception as e:
+                logging.error("Failed to update workflow state to EXITED: %s", e)
+            return
+
+        # process completed normally
+        process_thread.join()  # ensure thread cleanup
+
+        if process_result["error"]:
+            raise process_result["error"]
+
+        if process_result["returncode"] != 0:
+            logging.error(
+                "Process failed with return code %d: %s",
+                process_result["returncode"],
+                process_result["stdout"],
+            )
+        else:
+            logging.debug("Process completed successfully")
+
+        # Update workflow state to indicate the process has exited (normal completion)
+        try:
+            ob.workflow_state = "EXITED"
+            ob.update(req_sc)
+            logging.debug("Updated workflow state to EXITED for Docker_job %s", ob.id)
+        except Exception as e:
+            logging.error("Failed to update workflow state to EXITED: %s", e)
+
+    except Exception as e:
+        logging.error("Error during process execution: %s", e)
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+        process_thread.join(timeout=1)
+
+        # Update workflow state to indicate the process has exited (exception case)
+        try:
+            ob.workflow_state = "EXITED"
+            ob.update(req_sc)
+            logging.debug("Updated workflow state to EXITED for Docker_job %s", ob.id)
+        except Exception as update_e:
+            logging.exception("Failed to update workflow state to EXITED: %s", update_e)
 
 
 class RuntimeManager:
@@ -178,10 +298,26 @@ class RuntimeManager:
     def get_all_runtimes(self):
         return list(self.runtimes.values())
 
+    def kill_all_runtimes(self):
+        runtimes = list(self.runtimes.values())
+        for runtime in runtimes:
+            try:
+                runtime.stop()
+            except Exception as e:
+                logging.error("Error killing runtime: %s", e)
+
+        logging.info("Waiting for runtimes to exit")
+        for runtime in runtimes:
+            if runtime is not None and runtime.is_alive():
+                try:
+                    runtime.join(timeout=10)
+                except Exception:
+                    pass
+
     def create_runtime(
         self, req_sc: miranda.Security_context, ko_id: int, job: dict, payload: dict
     ):
-        logging.info("Creating runtime for project %s", ko_id)
+        logging.debug("Creating runtime for project %s", ko_id)
         if ko_id in self.runtimes:
             logging.warning("Runtime already exists for project %s", ko_id)
             return
@@ -192,7 +328,7 @@ class RuntimeManager:
                 self.ko_id = ko_id
 
             def __call__(self):
-                logging.info("Cleaning up runtime for project %s", self.ko_id)
+                logging.debug("Cleaning up runtime for project %s", self.ko_id)
                 self.runtime_manager.destroy_runtime(self.ko_id)
 
         cleaner = Cleaner(self, ko_id)
@@ -206,13 +342,13 @@ class RuntimeManager:
         self.runtimes[ko_id] = thd
 
     def destroy_runtime(self, ko_id: int):
-        logging.info("Destroying runtime for project %s", ko_id)
+        logging.debug("Destroying runtime for project %s", ko_id)
         if ko_id not in self.runtimes:
             logging.warning("Runtime does not exist for project %s", ko_id)
             return
         self.runtimes[ko_id].stop()
         context_path = os.path.join(self.config["paths"]["contexts"], str(ko_id))
         if os.path.exists(context_path):
-            logging.info("Removing context directory: %s", context_path)
+            logging.debug("Removing context directory: %s", context_path)
             shutil.rmtree(context_path)
         del self.runtimes[ko_id]

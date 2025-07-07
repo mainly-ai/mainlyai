@@ -31,7 +31,7 @@ def main():
             logging.error("No auth token provided: {}".format(e))
             return
 
-        cfg = config.write_config({"auth_token": args.token}, "localbot.yml")
+        cfg = config.write_config({"auth_token": args.token, "crg_id": args.crg_id}, "localbot.yml")
 
     logging.debug(f"Using config: {cfg}")
 
