@@ -794,7 +794,7 @@ END"""
             else:
                 sql_data.append("")
         sql_data = tuple(sql_data)
-        print(f"DEBUG: sp_create_{self.table_name}", sql_data)
+        logger.debug(f"sp_create_{self.table_name}", sql_data)
         aid = -1
         metadata_id = -1
         with con.cursor() as cursor:

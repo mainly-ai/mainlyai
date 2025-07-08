@@ -284,6 +284,8 @@ def start_runtime_thread(
         except Exception as update_e:
             logging.exception("Failed to update workflow state to EXITED: %s", update_e)
 
+    logging.info("Runtime for project %s has exited", ko_id)
+
 
 class RuntimeManager:
     def __init__(self, config: dict):
