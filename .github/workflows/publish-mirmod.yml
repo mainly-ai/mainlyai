@@ -1,0 +1,81 @@
+name: Publish mirmod to PyPI
+
+on:
+  push:
+    tags:
+      - 'mirmod-v*'  # Triggers on tags like mirmod-v1.0.0, mirmod-v0.0.2, etc.
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  publish:
+    name: Build and publish mirmod to PyPI
+    runs-on: ubuntu-latest
+    environment: release  # Use a protected environment for PyPI publishing
+    permissions:
+      id-token: write  # Required for trusted publishing to PyPI
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.14"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-packages
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          # Extract version from tag (remove mirmod-v prefix)
+          VERSION=${GITHUB_REF#refs/tags/mirmod-v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Update package version
+        run: |
+          # Update version in pyproject.toml
+          sed -i 's/version = ".*"/version = "${{ steps.get_version.outputs.version }}"/' packages/mirmod/pyproject.toml
+          echo "Updated version in pyproject.toml to ${{ steps.get_version.outputs.version }}"
+
+      - name: Build package
+        run: |
+          cd packages/mirmod
+          python -m build
+
+      - name: Check package
+        run: |
+          cd packages/mirmod
+          twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/mirmod/dist/
+          skip-existing: true
+          verbose: true
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: mirmod v${{ steps.get_version.outputs.version }}
+          body: |
+            ## mirmod v${{ steps.get_version.outputs.version }}
+            
+            This release publishes mirmod v${{ steps.get_version.outputs.version }} to PyPI.
+            
+            Install with: `pip install mirmod==${{ steps.get_version.outputs.version }}`
+          draft: false
+          prerelease: false 
