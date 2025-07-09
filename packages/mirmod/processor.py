@@ -1150,7 +1150,7 @@ class _Execution_context(Execution_context_api):
         self.get_current_wob().name = new_name
         self.get_current_wob().update(self.get_security_context())
 
-    def execute_wob(self, wob):
+    async def execute_wob(self, wob):
         """Execute the wob."""
         old_current_node = self.current_node
         # Set the current node to the wob we're executing and use the global execution graph as context
@@ -1158,7 +1158,7 @@ class _Execution_context(Execution_context_api):
             self.execution_graph, wob.metadata_id, self.code_cache, self.cached_wobs
         )
         code = self.code_cache[wob.metadata_id]
-        code.wob._execute(code.wob)
+        await code.wob._execute(code.wob)
         # Restore the current node to the previous value (the executer)
         self.current_node = old_current_node
 

@@ -2054,25 +2054,9 @@ def rewrite_function(ecx, function_name, payload):
     code_cache[wob.metadata_id] = load_plugin_from_string(runtime_code, wob.name)
 
 
-def execute_connected_wobs(ecx, attribute: str, value):
-    wob = get_wob_by_connected_attribute(ecx, attribute)
-    code_cache = ecx.get_code_cache()
-    code = code_cache[wob.metadata_id]
-    G: nx.DiGraph = ecx.get_execution_graph()
-    current_wob_metadata_id = ecx.get_current_wob_metadata_id()
-    outbound_edges = G.out_edges(current_wob_metadata_id, data=True)
-    for edge in outbound_edges:
-        for edge_attr in edge[2]["attributes"]:
-            if "source_transmitter_key" not in edge_attr:
-                continue
-            if edge_attr["source_transmitter_key"] == attribute:
-                receiver_key = edge_attr["destination_receiver_key"]
-                code.wob.attributes[receiver_key].receive(code.wob, value)
-    # code.wob._execute(code.wob)
-    ecx.execute_wob(wob)
-
-
-def run_mainly_task(pod_id: str, payload=None, auth=None):
+def run_mainly_task(
+    pod_id: str, payload=None, auth=None, endpoint="/stream_run_payload"
+):
     """Run a task on a MainlyAI pod and return the output as a generator.
     Args:
         pod_id: The MainlyAI pod id
@@ -2081,7 +2065,7 @@ def run_mainly_task(pod_id: str, payload=None, auth=None):
     """
     sess = requests.Session()
     r = sess.post(
-        f"https://{pod_id}/stream_run_payload",
+        f"https://{pod_id}{endpoint}",
         data={"payload": json.dumps(payload)},
         headers={"authorization": json.dumps(auth)},
         verify=False,

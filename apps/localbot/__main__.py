@@ -31,7 +31,9 @@ def main():
             logging.error("No auth token provided: {}".format(e))
             return
 
-        cfg = config.write_config({"auth_token": args.token, "crg_id": args.crg_id}, "localbot.yml")
+        cfg = config.write_config(
+            {"auth_token": args.token, "crg_id": args.crg_id}, "localbot.yml"
+        )
 
     logging.debug(f"Using config: {cfg}")
 
@@ -64,7 +66,7 @@ def main():
 
     else:
         logging.info("Starting in event mode")
-        current_event_handler = NotifiedEventHandler(cfg["auth_token"])
+        current_event_handler = NotifiedEventHandler(cfg)
         current_event_handler.run()
 
 
