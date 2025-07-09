@@ -39,7 +39,7 @@ class Compute_resource_group(Base_object_ORM):
             "cost_per_net_rx_gb": 0.000,
             "cost_per_net_tx_gb": 0.000,
             "deployment_base_url": None,
-            "operator_user_id": None,
+            "operator_user_id": -1,
         }
         self.id = id
         self.sctx = sc
