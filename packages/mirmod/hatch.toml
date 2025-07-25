@@ -10,3 +10,4 @@ exclude = [
 
 [build.targets.wheel.sources]
 "" = "mirmod"
+

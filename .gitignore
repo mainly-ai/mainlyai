@@ -181,3 +181,6 @@ add_coauthors.sh
 
 # macOS
 .DS_Store
+
+uv.lock
+

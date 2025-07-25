@@ -16,6 +16,9 @@ class Sleep_time:
         self.count = 0
         self.exponential = exponential
 
+    def reset(self):
+        self.count = 0
+
     def __call__(self):
         """Increment current sleep time so that we reach max in self.steps steps"""
         if self.count >= self.steps:
@@ -69,14 +72,15 @@ class NotifiedEventHandler:
                     # running project per wob_id.
                     s = round(self.sleep_time(), ndigits=1)
                     cur.execute(
-                        "SELECT /* WAITING_FOR_CRG_EVENT ({}) */ SLEEP({})".format(
+                        "SELECT /* WAITING_FOR_EVENT (crg_{}) */ SLEEP({})".format(
                             self.crg, s
                         )
                     )
                     _ = cur.fetchall()
                     didnt_get_any_notification = True
-                except Exception:
+                except Exception as e:
                     # NOTE: Error is 2013: Lost connection to MySQL server during query which is expected.
+                    print(e)
                     pass
 
                 if didnt_get_any_notification:
@@ -87,7 +91,7 @@ class NotifiedEventHandler:
                     )
                     time.sleep(1)
                     wake_up_counter += 1
-                    if wake_up_counter > 20:
+                    if wake_up_counter > 200:
                         logging.warning(
                             "Shutting down the processor due to inactivity. "
                         )
@@ -97,10 +101,17 @@ class NotifiedEventHandler:
                 job = miranda.get_message(self.sctx, f"crg_{self.crg}>job")
                 if job is None:
                     continue
+                self.sleep_time.reset()
                 logging.debug("Received job: %s", job)
                 payload = json.loads(job["payload"])
                 project_id = int(job["wob_id"])
+                wob_type = job["wob_type"]
                 req_sc = miranda.create_security_context(temp_token=payload["token"])
+                if wob_type.upper() == "DOCKER_JOB":
+                    docker_mid = job["wob_id"]
+                    print("TODO: Reset Docker mid " + str(docker_mid))
+                    continue
+
                 ko = miranda.Knowledge_object(req_sc, id=project_id)
                 logging.debug("Found project: %s", ko.__repr__("jdict"))
                 if ko.id == -1:

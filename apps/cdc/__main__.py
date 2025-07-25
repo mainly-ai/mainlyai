@@ -65,13 +65,6 @@ class ReplicationStream:
         stream.close()
 
 
-def extract_crg(target):
-    start = target.find("crg_") + len("crg_")
-    end = target.find(">", start)
-    crg_id = target[start:end]
-    return int(crg_id)
-
-
 class EventHandler:
     """
     Collects binlog events and processes them. Processing involves checking and killing
@@ -129,24 +122,6 @@ class EventHandler:
                 if not con.is_connected():
                     con.reconnect(attempts=5, delay=2)
 
-                if target.startswith("crg_") and target.endswith(">job"):
-                    crg = extract_crg(target)
-                    search_str = r"SELECT /* WAITING_FOR_CRG_EVENT (" + str(crg) + r")"
-                    sql = (
-                        "SELECT id FROM performance_schema.processlist WHERE substring(`INFO`,1,{}) = '{}' "
-                        "and db <> 'performance_schema'"
-                    ).format(len(search_str), search_str)
-                    with con.cursor() as cursor:
-                        cursor.execute(sql)
-                        result = cursor.fetchall()
-                        for row in result:
-                            logger.info(
-                                "Event received - Target: %s, WobID: %s, process: %s",
-                                target,
-                                wobid,
-                                row[0],
-                            )
-                            cursor.execute("KILL {}".format(row[0]))
                 # Fist we check the legacy form which didn't include the target in the WAIT_FOR_EVENT
                 search_str = r"SELECT /* WAITING_FOR_EVENT (" + str(wobid) + r")"
                 sql = (
@@ -168,30 +143,51 @@ class EventHandler:
                             cursor.execute("KILL {}".format(row[0]))
 
                 # Second we build the search string using the provided target and the wob_id from event
-                search_str = (
-                    r"SELECT /* WAITING_FOR_EVENT ("
-                    + str(wobid)
-                    + "-"
-                    + str(target)
-                    + r")"
-                )
-                sql = (
-                    "SELECT conn_id FROM sys.processlist WHERE substring(current_statement, 1, {}) = %s and db = 'miranda' and current_statement is not NULL"
-                ).format(len(search_str))
+                if ">" not in target:
+                    search_str = (
+                        r"SELECT /* WAITING_FOR_EVENT ("
+                        + str(wobid)
+                        + "-"
+                        + str(target)
+                        + r")"
+                    )
+                    sql = (
+                        "SELECT conn_id FROM sys.processlist WHERE substring(current_statement, 1, {}) = %s and db = 'miranda' and current_statement is not NULL"
+                    ).format(len(search_str))
 
-                with con.cursor() as cursor:
-                    cursor.execute(sql, (search_str,))
-                    result = cursor.fetchall()
-                    print(sql)
-                    for row in result:
-                        logger.info(
-                            "Event received - Target: %s, WobID: %s, process: %s",
-                            target,
-                            wobid,
-                            row[0],
-                        )
-                        cursor.execute("KILL {}".format(row[0]))
+                    with con.cursor() as cursor:
+                        cursor.execute(sql, (search_str,))
+                        result = cursor.fetchall()
+                        print(sql)
+                        for row in result:
+                            logger.info(
+                                "Event received - Target: %s, WobID: %s, process: %s",
+                                target,
+                                wobid,
+                                row[0],
+                            )
+                            cursor.execute("KILL {}".format(row[0]))
 
+                # Third we build the search string using the crg target only (needed for crg_X>job messages)
+                if ">" in target:
+                    crg = target[: target.find(">")]
+                    search_str = r"SELECT /* WAITING_FOR_EVENT (" + crg + r")"
+                    sql = (
+                        "SELECT conn_id FROM sys.processlist WHERE substring(current_statement, 1, {}) = %s and db = 'miranda' and current_statement is not NULL"
+                    ).format(len(search_str))
+
+                    with con.cursor() as cursor:
+                        cursor.execute(sql, (search_str,))
+                        result = cursor.fetchall()
+                        print(sql)
+                        for row in result:
+                            logger.info(
+                                "Event received - Target: %s, WobID: %s, process: %s",
+                                crg,
+                                wobid,
+                                row[0],
+                            )
+                            cursor.execute("KILL {}".format(row[0]))
                 # Reset target and wobid for the next event
                 target = None
                 wobid = None
