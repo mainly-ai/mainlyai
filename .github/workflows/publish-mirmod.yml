@@ -50,18 +50,12 @@ jobs:
 
       - name: Build package
         run: |
-          cd packages/mirmod
-          python -m build
-
-      - name: Check package
-        run: |
-          cd packages/mirmod
-          twine check dist/*
+          uv build --package mirmod
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: packages/mirmod/dist/
+          packages-dir: dist/
           skip-existing: true
           verbose: true
 
