@@ -10,8 +10,6 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 "ci:lint" = "ruff check ${PWD}"
 build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"} ]
 
-setup-ci = "python3 scripts/setup_missing_packages.py && uv sync --all-packages"
-
 [tool.poe.tasks."build:mirmod"]
 cmd = "uv build"
 cwd = "./packages/mirmod"

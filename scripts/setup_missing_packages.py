@@ -11,8 +11,9 @@ from pathlib import Path
 def create_placeholder_miranda_admin_ops():
     """Create a minimal placeholder miranda_admin_ops package."""
     package_dir = Path("packages/miranda_admin_ops")
+    pyproject_file = package_dir / "pyproject.toml"
 
-    if package_dir.exists():
+    if pyproject_file.exists():
         print("✓ miranda_admin_ops already exists")
         return
 
