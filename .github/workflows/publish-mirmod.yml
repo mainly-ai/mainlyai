@@ -32,8 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 scripts/setup_missing_packages.py
-          uv sync --package mirmod
-          uv sync --all-packages
+          uv sync --no-editable --all-packages
 
       - name: Extract version from tag
         id: get_version
