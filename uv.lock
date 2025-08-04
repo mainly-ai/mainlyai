@@ -556,26 +556,6 @@ wheels = [
 name = "miranda-admin-ops"
 version = "0.0.1"
 source = { editable = "packages/miranda_admin_ops" }
-dependencies = [
-    { name = "mirmod" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "poethepoet" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "mirmod", editable = "packages/mirmod" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "poethepoet", specifier = ">0" },
-    { name = "pytest", specifier = ">0" },
-    { name = "ruff", specifier = ">0" },
-]
 
 [[package]]
 name = "mirmod"
