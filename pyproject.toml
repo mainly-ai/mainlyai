@@ -8,6 +8,8 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 
 "ci:fmt" = "ruff format --check ${PWD}"  # fail if not formatted
 "ci:lint" = "ruff check ${PWD}"
+"build:docker:processor" = "docker build --platform linux/amd64 -t mainlyai/processor:latest --build-arg 'CACHEBUST=$(date +%s)' -f dockerfiles/processor/Dockerfile ."
+"build:docker:processor:push" = "docker push mainlyai/processor:latest"
 build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"} ]
 
 [tool.poe.tasks."build:mirmod"]
