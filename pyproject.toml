@@ -10,7 +10,12 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 "ci:lint" = "ruff check ${PWD}"
 "build:docker:processor" = "docker build --platform linux/amd64 -t mainlyai/processor:latest --build-arg 'CACHEBUST=$(date +%s)' -f dockerfiles/processor/Dockerfile ."
 "build:docker:processor:push" = "docker push mainlyai/processor:latest"
-build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"} ]
+"build:docker:cdc" = [
+    {ref="build:cdc"},
+    {cmd="docker build -t mainlyai/cdc:latest -f dockerfiles/cdc/Dockerfile ."},
+]
+"build:docker:cdc:push" = "docker push mainlyai/cdc:latest"
+build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"}, {ref="build:cdc"}, {ref="build:localbot"} ]
 
 [tool.poe.tasks."build:mirmod"]
 cmd = "uv build"
@@ -19,6 +24,14 @@ cwd = "./packages/mirmod"
 [tool.poe.tasks."build:miranda_admin_ops"]
 cmd = "uv build"
 cwd = "./packages/miranda_admin_ops"
+
+[tool.poe.tasks."build:cdc"]
+cmd = "uv build"
+cwd = "./apps/cdc"
+
+[tool.poe.tasks."build:localbot"]
+cmd = "uv build"
+cwd = "./apps/localbot"
 
 [project]
 name = "mainlyai"

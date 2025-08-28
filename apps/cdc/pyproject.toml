@@ -5,6 +5,8 @@ description = "Change Data Capture daemon used for poor mans ebus"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "mirmod",
+    "mysql-replication"
 ]
 
 [dependency-groups]

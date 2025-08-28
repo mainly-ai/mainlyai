@@ -46,6 +46,10 @@ wheels = [
 name = "cdc"
 version = "0.0.1"
 source = { virtual = "apps/cdc" }
+dependencies = [
+    { name = "mirmod" },
+    { name = "mysql-replication" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -55,6 +59,10 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "mirmod", editable = "packages/mirmod" },
+    { name = "mysql-replication" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -606,6 +614,7 @@ version = "0.0.1"
 source = { editable = "packages/miranda_admin_ops" }
 dependencies = [
     { name = "mirmod" },
+    { name = "mysql-replication" },
 ]
 
 [package.dev-dependencies]
@@ -616,7 +625,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mirmod", editable = "packages/mirmod" }]
+requires-dist = [
+    { name = "mirmod", editable = "packages/mirmod" },
+    { name = "mysql-replication" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -638,7 +650,6 @@ dependencies = [
     { name = "lxml" },
     { name = "matplotlib" },
     { name = "mysql-connector-python" },
-    { name = "mysql-replication" },
     { name = "nest-asyncio" },
     { name = "networkx" },
     { name = "niquests" },
@@ -669,7 +680,6 @@ requires-dist = [
     { name = "lxml" },
     { name = "matplotlib" },
     { name = "mysql-connector-python", specifier = "==8.0.28" },
-    { name = "mysql-replication" },
     { name = "nest-asyncio" },
     { name = "networkx" },
     { name = "niquests" },
