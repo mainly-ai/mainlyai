@@ -12,7 +12,7 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 "build:docker:processor:push" = "docker push mainlyai/processor:latest"
 "build:docker:cdc" = [
     {ref="build:cdc"},
-    {cmd="docker build -t mainlyai/cdc:latest -f dockerfiles/cdc/Dockerfile ."},
+    {cmd="docker build --platform linux/amd64 -t mainlyai/cdc:latest -f dockerfiles/cdc/Dockerfile ."},
 ]
 "build:docker:cdc:push" = "docker push mainlyai/cdc:latest"
 build = [ {ref="build:mirmod"}, {ref="build:miranda_admin_ops"}, {ref="build:cdc"}, {ref="build:localbot"} ]
