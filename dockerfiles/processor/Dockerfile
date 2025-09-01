@@ -36,4 +36,4 @@ RUN chmod +x /usr/local/bin/logzod
 # RUN chown -R processor:processor /app
 # USER processor
 
-ENTRYPOINT ["/usr/local/bin/logzod", "uv", "run", "-m", "mirmod.processor"]
+ENTRYPOINT ["/usr/local/bin/logzod", "/venv/bin/python3", "-m", "mirmod.processor"]
