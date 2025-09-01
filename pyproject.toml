@@ -8,8 +8,14 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
 
 "ci:fmt" = "ruff format --check ${PWD}"  # fail if not formatted
 "ci:lint" = "ruff check ${PWD}"
-"build:docker:processor" = "docker build --platform linux/amd64 -t mainlyai/processor:latest --build-arg 'CACHEBUST=$(date +%s)' -f dockerfiles/processor/Dockerfile ."
-"build:docker:processor:push" = "docker push mainlyai/processor:latest"
+"build:docker:processor" = [
+    {cmd="docker build --platform linux/amd64 -t mainlyai/processor:latest --build-arg 'CACHEBUST=$(date +%s)' --build-arg 'LOGZOD_ARCH=x86_64' -f dockerfiles/processor/Dockerfile ."},
+    {cmd="docker build --platform linux/amd64 -t mainlyai/processor:debug --build-arg 'CACHEBUST=$(date +%s)' --build-arg 'LOGZOD_ARCH=x86_64-debug' -f dockerfiles/processor/Dockerfile ."},
+]
+"build:docker:processor:push" = [
+    {cmd="docker push mainlyai/processor:latest"},
+    {cmd="docker push mainlyai/processor:debug"},
+]
 "build:docker:cdc" = [
     {ref="build:cdc"},
     {cmd="docker build --platform linux/amd64 -t mainlyai/cdc:latest -f dockerfiles/cdc/Dockerfile ."},

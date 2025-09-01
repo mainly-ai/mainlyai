@@ -8,7 +8,7 @@ ENV UV_PYTHON_DOWNLOADS=automatic
 RUN apt-get update -y
 RUN apt install python3 openssh-client curl git -y
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
 
 RUN uv venv /venv
 ENV PATH="/venv/bin:$PATH"
@@ -27,7 +27,8 @@ ADD dist/mirmod-*.whl /miranda/dist
 RUN uv pip install /miranda/dist/*.whl
 
 ARG CACHEBUST=1
-RUN curl -L https://github.com/mainly-ai/logzod/releases/latest/download/logzod-linux-x86_64 -o /usr/local/bin/logzod
+ARG LOGZOD_ARCH=x86_64
+RUN curl -L https://github.com/mainly-ai/logzod/releases/latest/download/logzod-linux-${LOGZOD_ARCH} -o /usr/local/bin/logzod
 RUN chmod +x /usr/local/bin/logzod
 
 # # Create a non-root user
