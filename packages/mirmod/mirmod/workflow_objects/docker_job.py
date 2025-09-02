@@ -49,7 +49,7 @@ class Docker_job(Base_object_ORM):
             "host": "",
             "container_id": "",
             "ssh_user": "",
-            "docker_sudo": False,
+            "docker_sudo": "",
             "docker_network": "",
             "docker_env_vars": "",
             "workflow_state": "UNINITIALIZED",
