@@ -1376,6 +1376,7 @@ class Field_iterator:
                 node = next(self.current_iterator)
             self.visited.add(node)
             self.last_node_mid = node
+            current_field.field_nodes.add(node)
             if "is_part_of_field" not in self.graph.nodes[node]:
                 self.graph.nodes[node]["is_part_of_field"] = {}
             if self.dispatch_field:
@@ -1407,6 +1408,7 @@ class Field_iterator:
                 current_field: Field_descriptor = Field_descriptor(
                     tr_pair[0], "-", tr_pair[1]
                 )
+
                 if "is_part_of_field" in self.graph.nodes[node]:
                     self.graph.nodes[node]["is_part_of_field"]["-"] = current_field
                     if self.dispatch_field:
@@ -1450,18 +1452,16 @@ class Field_iterator:
                 # corresponds to the current transmitter
 
                 # Pop the field from the stack
-                self.field_stack.pop()
+                completed_field = self.field_stack.pop()
                 self.nesting_level -= 1
 
-                current_field.receiver_mid = node
-                current_field.reciever_attr = receiver_attr
-                self.processed_fields[current_field.transmitter_mid] = current_field
+                completed_field.receiver_mid = node
+                completed_field.reciever_attr = receiver_attr
+                self.processed_fields[completed_field.transmitter_mid] = completed_field
                 # Update dictionaries in the execution planner
-                self.execution_planner.register_transmitter_field(current_field)
+                self.execution_planner.register_transmitter_field(completed_field)
                 self.last_node_in_field = True  # this is used in check_domain()
 
-            if current_field:
-                current_field.field_nodes.add(node)
             en = Execution_node(self.graph, node, self.code_cache, self.wob_cache)
             en.is_part_of_field["-"] = current_field
             return en

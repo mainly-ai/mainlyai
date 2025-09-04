@@ -948,6 +948,7 @@ class _Execution_context(Execution_context_api):
         return self._has_executed[mid]
 
     def set_execution_plan(self, execution_plan):
+        self.active_iterator_field = None
         self.execution_plan = execution_plan
         self._execution_plan_index = {
             n.node_mid: i for i, n in enumerate(execution_plan)
@@ -1260,7 +1261,7 @@ def set_active_iterator(
 
     field: pg.Field_descriptor = en.field()
     assert field is not None, "Transmitter node {} has no field.".format(en)
-    # print ("|=> DEBUG: Active field: {}".format(field))
+    # print("|=> DEBUG: Active field: {} {}".format(field, field.field_nodes))
     execution_context.active_iterator_field = field
     if execution_context.active_iterator_field not in execution_context.iterator_stack:
         execution_context.iterator_stack.append(execution_context.active_iterator_field)
@@ -1282,8 +1283,6 @@ def restore_execution_context(execution_context: _Execution_context):
     s = execution_context.active_iterator_field
     iterator_key = s.id()
     if iterator_key not in execution_context.iterators:
-        # print ("DEBUG: restore_execution_context: iterator_key= {} not in iterator!".format(iterator_key))
-        # print ("DEBUG: len(iterator_stack)= {} ".format(len(execution_context.iterator_stack)))
         return
     if iterator_key is not None:
         del execution_context.iterators[iterator_key]
@@ -1294,7 +1293,6 @@ def restore_execution_context(execution_context: _Execution_context):
     previous_active_iterator_field = execution_context.iterator_stack.pop()
     if len(execution_context.iterator_stack) == 0:
         execution_context.active_iterator_field = None
-        return
     else:
         execution_context.active_iterator_field = execution_context.iterator_stack[-1]
 
@@ -1333,6 +1331,7 @@ def restore_execution_context(execution_context: _Execution_context):
     execution_context.received_count[previous_active_iterator_field.transmitter_mid] = 0
     for node in previous_active_iterator_field.field_nodes:
         execution_context._has_executed[node] = False
+        execution_context.received_count[node] = 0
 
     # We need to recursively loop over all subroutines
     def recursive_restore(s: pg.Field_descriptor):
