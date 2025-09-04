@@ -975,14 +975,18 @@ class _Execution_context(Execution_context_api):
             wob_code = self.code_cache[rmid]
             receiver_attribute = self.active_iterator_field.reciever_attr
             receiver = None
-            if receiver_attribute != "-":
+            # NOTE these checks are a bit iffy. When we're in a dispatch where nodes have
+            # inbound edges from outside of the iterator field we might run into trouble
+            # and we might not be able to identify a receiver for the current field.
+            if receiver_attribute != "-" and receiver_attribute is not None:  # iffy
                 receiver = wob_code.wob.attributes[receiver_attribute]
             else:
                 for attr, func in wob_code.wob.attributes.items():
                     if isinstance(func, Receiver_field):
                         receiver = func
                         break
-            receiver.receive(wob_code.wob, miranda.StopIterationToken)
+            if receiver is not None:  # iffy
+                receiver.receive(wob_code.wob, miranda.StopIterationToken)
             self.field_is_exhausted[self.active_iterator_field.id()] = True
             self.restart_loop = False
 
