@@ -12,11 +12,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
 
 RUN uv venv /venv
 ENV PATH="/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/venv"
 
 # # create pip and pip3 command wrappers in /bin
-# RUN echo '#!/bin/sh\nuv pip "$@"' > /bin/pip && \
-#     echo '#!/bin/sh\nuv pip "$@"' > /bin/pip3 && \
-#     chmod +x /bin/pip /bin/pip3
+RUN echo '#!/bin/sh\nuv pip "$@"' > /bin/pip && \
+    echo '#!/bin/sh\nuv pip "$@"' > /bin/pip3 && \
+    chmod +x /bin/pip /bin/pip3
 
 ADD dockerfiles/processor/requirements.txt /miranda/processor_requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
