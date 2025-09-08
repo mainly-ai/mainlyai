@@ -1,0 +1,7 @@
+[build.targets.wheel]
+include = [
+  "localbot/**/*"
+]
+exclude = [
+    "tests/**"
+]
