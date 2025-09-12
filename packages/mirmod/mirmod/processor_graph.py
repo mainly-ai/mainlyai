@@ -1367,7 +1367,7 @@ class Field_iterator:
             # When we're done, let the execution planner know the last node ID
             self.execution_planner.last_node_mid = self.last_node_mid
             raise StopIteration
-
+        node = None
         try:
             current_field = self.field_stack[-1]
             # Get the next node from the current iterator
@@ -1467,6 +1467,8 @@ class Field_iterator:
             return en
 
         except StopIteration:
+            if current_field:
+                current_field.field_nodes.add(node)
             if len(self.field_stack) > 0:
                 current_field = self.field_stack[-1]
                 # print ("DEBUG : We exhausted the BFS search but we still have the following fields on the stack:")
