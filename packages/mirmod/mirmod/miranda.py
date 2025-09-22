@@ -621,6 +621,22 @@ def create_graph(
         logger.error(e)
         traceback.print_exc()
 
+def find_objects_by_metadata_ids(sc: Security_context, ids: dict[str, list[int]], fields: dict[str, list[str]] = {}):
+    """
+    Find objects by their IDs.
+    ids is a dictionary of object types to lists of IDs.
+    Returns a list of workflow objects.
+    """
+    con = sc.connect()
+    rs = []
+    with con.cursor(dictionary=True) as cur:
+        for type, id_list in ids.items():
+            obtype = table_to_object(type)
+            sql = obtype(sc, -1).get_projection(fields.get(type, None)) + f" WHERE metadata_id IN ({','.join(str(id) for id in id_list)})"
+            cur.execute(sql)
+            for row in cur.fetchall():
+                rs.append(obtype(sc, metadata_id=row["metadata_id"]))
+    return rs
 
 def traverse_tree(
     ko: Knowledge_object, action, drop_ko=False, filter_type=lambda x: False
