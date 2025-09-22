@@ -1,3 +1,4 @@
+from typing import Optional
 from mirmod.security.security_context import Security_context
 from tabulate import tabulate
 import mysql
@@ -52,8 +53,10 @@ class Base_object_ORM(Attribute_tracker):
     changed_list = []
     change_tracking_enabled = True
 
-    def get_projection(self, fields: list[str]):
+    def get_projection(self, fields: Optional[list[str]] = None):
         """Returns a projection of the fields in the ORM"""
+        if fields is None:
+            return f"SELECT {self.view_projection_stmt2} FROM v_{self.table_name} as v"
         if "id" not in fields:
             fields.append("id")
         for f in fields:
