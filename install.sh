@@ -1,1 +1,1 @@
-uv pip install dist/*.whl
+uv pip install -e dist/*.whl

@@ -3,6 +3,7 @@ from collections import deque
 from mirmod.workflow_object import Transmitter, Transmitter_field, Receiver_field
 import copy
 import heapq
+import matplotlib.pyplot as plt
 import functools
 
 
@@ -21,6 +22,28 @@ def in_degree(G, key):
         attr = e[2]["attributes"]
         in_edge += len(attr)
     return in_edge
+
+
+def show_graph(G: nx.DiGraph, wob_cache: dict = None):
+    """
+    Visualizes a networkx graph in a new window.
+    If wob_cache is provided, it will display node names along with their IDs.
+    """
+    if not G.nodes():
+        print("show_graph: Graph is empty, nothing to show.")
+        return
+
+    labels = {}
+    if wob_cache:
+        for node in G.nodes():
+            name = wob_cache.get(node, None)
+            if name:
+                labels[node] = f"{name.name}\n({node})"
+
+    plt.figure(figsize=(16, 10))
+    pos = nx.spring_layout(G, k=0.5, iterations=50)
+    nx.draw(G, pos, labels=labels or None, with_labels=True, node_size=3000, node_color="skyblue", font_size=8, font_weight="bold", arrows=True, arrowsize=20)
+    plt.show()
 
 
 def is_dispatcher_node(G, node_mid, code_cache):
@@ -770,6 +793,8 @@ class Default_node_iterator:
 
         subgraph = self.graph.subgraph(subgraph.nodes)
 
+        #show_graph(subgraph, self.wob_cache)
+
         # Perform a topological sort on the induced subgraph.
         # remove all init nodes.
         tr_pairs = find_transmitter_receiver_pairs(subgraph, self.code_cache)
@@ -783,18 +808,33 @@ class Default_node_iterator:
                 nodes = r_G.nodes() | l_G.nodes()
                 G = self.graph.subgraph(nodes).copy()
                 G.add_edge(pair[0], pair[1])
+                #show_graph(G, self.wob_cache)
             self.sorted_nodes = list(nx.topological_sort(G))
         else:
             # Eliminate nodes and paths not connected to the start node.
-            component_sets = nx.weakly_connected_components(self.graph)
+            component_sets = nx.weakly_connected_components(subgraph)
             for component in component_sets:
                 if self.start_node_mid in component:
+                    # Add all nodes that are ancestors to the start_node_mid within the component
+                    # to ensure all dependencies are included in the sort.
+                    nodes_to_sort = component.union(
+                        nx.ancestors(subgraph, self.start_node_mid)
+                    )
+                    sg= self.graph.subgraph(nodes_to_sort)
+                    #show_graph(sg, self.wob_cache)
                     self.sorted_nodes = list(
-                        nx.topological_sort(self.graph.subgraph(component))
+                        nx.topological_sort(sg)
                     )
                     break
         try:
-            self.current_index = self.sorted_nodes.index(self.start_node_mid)
+            # Because of how we iterate over the sorted nodes we need to swap the order so that the first
+            # node is first in the list after the topological sort. This is in turn because we add the
+            # first node to the execution plan automatically later on.
+            first_node = self.sorted_nodes[0]
+            start_node_idx = self.sorted_nodes.index(self.start_node_mid)
+            self.sorted_nodes[0] = self.start_node_mid
+            self.sorted_nodes[start_node_idx] = first_node
+            self.current_index = 0 #self.sorted_nodes.index(self.start_node_mid)
         except Exception:
             pass
         self.transmitter_receiver_count = 0  # Reset counter again for iteration
@@ -1831,16 +1871,18 @@ class Generate_execution_plan:
                 self,
                 dispatch_field=self.dispatch_field,
             )
+            self.next_node_itr.set_start_node(start_node)
         else:
-            # Initialize with default iterator
+            # Initialize with default iterator and set start node
             self.next_node_itr = self.select_iterator_strategy(start_node)
-        self.next_node_itr.set_start_node(start_node)
+
         # Add to execution plan
         exec_node = self.next_node_itr.get_start_node()
         self.last_node_mid = exec_node.node_mid
         # print ("** COMMIT: ",exec_node)
         self.execution_plan.append(exec_node)
         visited_nodes = set()
+        visited_nodes.add(exec_node)
 
         try:
             while True:
