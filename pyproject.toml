@@ -17,9 +17,9 @@ all = [ {ref="fmt"}, {ref="lint"}, {ref="test"} ]
     {cmd="docker push mainlyai/processor:latest"},
     {cmd="docker push mainlyai/processor:ubuntu-24.04-cuda-12.9.1"},
     {cmd="docker push mainlyai/processor:debug"},
-    {cmd="VERSION=$(grep '^version = ' ./packages/mirmod/pyproject.toml | awk -F'\"' '{print $2}') && docker tag mainlyai/processor:latest mainlyai/processor:$VERSION && docker push mainlyai/processor:$VERSION"},
-    {cmd="VERSION=$(grep '^version = ' ./packages/mirmod/pyproject.toml | awk -F'\"' '{print $2}') && docker tag mainlyai/processor:debug mainlyai/processor:$VERSION-debug && docker push mainlyai/processor:$VERSION-debug"},
-    {cmd="VERSION=$(grep '^version = ' ./packages/mirmod/pyproject.toml | awk -F'\"' '{print $2}') && docker tag mainlyai/processor:ubuntu-24.04-cuda-12.9.1 mainlyai/processor:$VERSION-ubuntu-24.04-cuda-12.9.1 && docker push mainlyai/processor:$VERSION-ubuntu-24.04-cuda-12.9.1"},
+    {shell="VERSION=$(python3 -c \"import tomllib; print(tomllib.load(open('./packages/mirmod/pyproject.toml', 'rb'))['project']['version'])\") && docker tag mainlyai/processor:latest mainlyai/processor:$VERSION && docker push mainlyai/processor:$VERSION"},
+    {shell="VERSION=$(python3 -c \"import tomllib; print(tomllib.load(open('./packages/mirmod/pyproject.toml', 'rb'))['project']['version'])\") && docker tag mainlyai/processor:debug mainlyai/processor:$VERSION-debug && docker push mainlyai/processor:$VERSION-debug"},
+    {shell="VERSION=$(python3 -c \"import tomllib; print(tomllib.load(open('./packages/mirmod/pyproject.toml', 'rb'))['project']['version'])\") && docker tag mainlyai/processor:ubuntu-24.04-cuda-12.9.1 mainlyai/processor:$VERSION-ubuntu-24.04-cuda-12.9.1 && docker push mainlyai/processor:$VERSION-ubuntu-24.04-cuda-12.9.1"},
 ]
 "build:docker:cdc" = [
     {ref="build:cdc"},
