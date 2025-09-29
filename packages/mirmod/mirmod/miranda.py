@@ -404,7 +404,7 @@ def delete_object(obj, objid_array=None, cascading=False, hard=True):
             # Drop all references to this knowledge object
             # TODO don't delete the entire KO if the obj isn't a KO
             if hard:
-                cursor.callproc("sp_delete_graph_by_mid", [obj.metadata_id])
+                cursor.callproc("sp_delete_graph_by_mid", [obj.metadata_id,5])
                 for result in cursor.stored_results():
                     rows = result.fetchall()
                     logger.debug("hard deleted rows: %s", rows)
@@ -413,7 +413,7 @@ def delete_object(obj, objid_array=None, cascading=False, hard=True):
                 cursor.close()
                 logger.info("Deleted number of {} objects".format(affected))
             else:
-                cursor.callproc("sp_soft_delete_graph_by_mid", [obj.metadata_id])
+                cursor.callproc("sp_soft_delete_graph_by_mid", [obj.metadata_id,5])
                 for result in cursor.stored_results():
                     rows = result.fetchall()
                     logger.debug("soft deleted rows: %s", rows)
@@ -1618,11 +1618,7 @@ def delete_project(sc, ko: Knowledge_object, preview=False, hard=True):
     if preview:
         return nodes.values()
 
-    for n in nodes.values():
-        # TODO: implement bulk delete
-        delete_object(n, hard=hard)
-        print("Deleting {}".format(n.metadata_id))
-    delete_object(ko, hard=hard)
+    delete_object(ko, cascading=True, hard=True)
     return nodes.values()
 
 
