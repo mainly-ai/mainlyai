@@ -36,6 +36,8 @@ from datetime import datetime
 import copy
 import asyncio
 import nest_asyncio
+from typing import Optional
+from types import ModuleType
 
 pickle.settings["recurse"] = True
 pickle.load_types(pickleable=True, unpickleable=True)
@@ -146,12 +148,34 @@ WOB_FILE_TEMPLATE_PATH = "WOB-{}.py"  # NOTE: if changed; fix replace_wob_patter
 has_executed_setup = {}
 
 
-def load_plugin(plugin_path, plugin_name):
+def load_plugin(plugin_path: str, plugin_name: str) -> ModuleType:
+    """
+    Load a plugin module from a file path.
+    - Inserts into sys.modules before exec (matching import semantics)
+    - On error: removes the half-initialized module and restores any previous one
+    """
     spec = importlib.util.spec_from_file_location(plugin_name, plugin_path)
-    plugin_module = importlib.util.module_from_spec(spec)
-    sys.modules[plugin_name] = plugin_module
-    spec.loader.exec_module(plugin_module)
-    return plugin_module
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot create spec for {plugin_name!r} at {plugin_path!r}")
+
+    module = importlib.util.module_from_spec(spec)
+
+    # Preserve any existing module under this name so we can restore it on failure
+    previous: Optional[ModuleType] = sys.modules.get(plugin_name)
+
+    # Publish early to support circular imports during execution
+    sys.modules[plugin_name] = module
+    try:
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        # Remove the half-initialized module
+        sys.modules.pop(plugin_name, None)
+        # Restore the previous module if there was one
+        if previous is not None:
+            sys.modules[plugin_name] = previous
+        # Re-raise the original exception
+        raise
 
 
 def load_plugin_from_string(plugin_code, plugin_name):
@@ -671,6 +695,8 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                 )
             )
             continue
+        with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w") as f:
+            f.write(runtime_code)
         if wob_key not in code_cache:
             try:
                 if wob.update_policy == "SUBSCRIBE":
@@ -688,17 +714,16 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                     else:
                         org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
                         runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
-                    code_cache[wob_key] = load_plugin_from_string(
-                        runtime_code, WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
+                        code_cache[wob_key] = load_plugin(
+                            WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
                     )
                 elif wob.code_type == "PYTHON":
-                    code_cache[wob_key] = load_plugin_from_string(
-                        runtime_code, WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
+                    code_cache[wob_key] = load_plugin(
+                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
                     )
                 else:
-                    code_cache[wob_key] = load_plugin_from_string(
-                        make_wob_runtime_code(wob, wob_key),
-                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
+                    code_cache[wob_key] = load_plugin(
+                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
                     )
             except Exception:
                 print(
@@ -716,8 +741,7 @@ def cache_code_and_init_nodes(NG, cached_wobs):
             code_cache[wob_key].__dict__["__file__"] = os.path.abspath(
                 WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
             )
-            with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w") as f:
-                f.write(runtime_code)
+
     return code_cache
 
 
