@@ -13,7 +13,7 @@ dependencies = [
     "pyyaml",
     "asyncio",
     "asyncssh",
-    "mysql-connector-python==8.0.28",
+    "mysql-connector-python==9.4.0",
     "pandas",
     "numpy",
     "pillow",
