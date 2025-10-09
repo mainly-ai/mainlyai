@@ -1818,11 +1818,37 @@ class Generate_execution_plan:
         default_iterator.set_start_node(node_mid)
         return default_iterator
 
+    def is_dispatcher_node(G, node_mid, code_cache):
+        src_code = code_cache[node_mid]
+        count = 0
+        for src_transmitter_key in src_code.wob.attributes.keys():
+            if src_transmitter_key not in src_code.wob.attributes:
+                continue
+            transmitter = src_code.wob.attributes[src_transmitter_key]
+            if isinstance(transmitter, Transmitter_field):
+                count += 1
+        if count > 1:
+            return True
+        return False
+
+    def has_field_or_dispatches(self,G):
+        for n in G.nodes():
+            if has_connected_transmitter_field(G, n, self.code_cache):
+                return True
+        return False
+
     def __call__(self, G: nx.DiGraph):
         self.execution_graph = G
         self.execution_plan = []  # list(Execution_node)
         self.transmitter_mid_to_field_descriptor = {}
         self.receiver_mid_to_field_descriptor = {}
+
+        # If the graph doesn't have any dispatches nor fields we simply return the topological sort.
+        if self.dispatch_field is None and not self.has_field_or_dispatches(G):
+            plan = nx.topological_sort(G)
+            for n in plan:
+                self.execution_plan.append(Execution_node(G, n, self.code_cache, self.wob_cache))
+            return self.execution_plan
 
         # Update start_nodes with the valid ones
         start_node = None
