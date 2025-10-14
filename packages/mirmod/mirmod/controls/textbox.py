@@ -1,5 +1,5 @@
 class Textbox:
-  def __init__(self, placeholder="", min_len=0, max_len=256, rows=1, regex=".*"):
+  def __init__(self, placeholder="", min_len=0, max_len=16000, rows=1, regex=".*"):
     self.kind = 'textbox'
     self.placeholder = placeholder
     self.min_len = min_len
