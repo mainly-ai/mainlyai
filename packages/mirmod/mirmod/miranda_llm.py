@@ -5,7 +5,6 @@ import json
 import inspect
 from enum import Enum
 
-
 class AsyncStreamingSSEParser:
     """
     Parses a stream of Server-Sent Events (SSE) line by line and
@@ -302,47 +301,48 @@ class StreamingSSEParser:
             # else: ignore retry field if value is not all digits
         # else: ignore unknown field
 
+class LLMMessageRole(str, Enum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
 
-try:
+class LLMMessage:
+    def __init__(self, role: LLMMessageRole, content):
+        self.role = role
+        self.content = content
 
-    class LLMMessageRole(str, Enum):
-        SYSTEM = "system"
-        USER = "user"
-        ASSISTANT = "assistant"
-        TOOL_CALL = "tool_call"
-        TOOL_RESULT = "tool_result"
+    def to_dict(self):
+        return {"role": self.role, "content": self.content}
 
-    class LLMMessage:
-        def __init__(self, role: LLMMessageRole, content: str):
-            self.role = role
-            self.content = content
+class LLMToolCall:
+    def __init__(self, call_id: str, function: str, arguments: str):
+        self.role = LLMMessageRole.TOOL_CALL
+        self.call_id = call_id
+        self.function = function
+        self.arguments = arguments
+    def to_dict(self):
+        return {
+            "role": self.role,
+            "call_id": self.call_id,
+            "function": self.function,
+            "arguments": self.arguments
+        }
 
-    class LLMToolCall:
-        def __init__(self, call_id: str, function: str, arguments: str):
-            self.role = LLMMessageRole.TOOL_CALL
-            self.call_id = call_id
-            self.function = function
-            self.arguments = arguments
 
-    class LLMToolResult:
-        def __init__(self, call_id: str, content: str):
-            self.role = LLMMessageRole.TOOL_RESULT
-            self.call_id = call_id
-            self.content = content
-except:
-    pass
-
+class LLMToolResult:
+    def __init__(self, call_id: str, content: str):
+        self.role = LLMMessageRole.TOOL_RESULT
+        self.call_id = call_id
+        self.content = content
 
 class ArgotModelProvider:
     def __init__(self, token, use_async=True):
         self.use_async = use_async
-        if use_async:
-            self.sess = niquests.AsyncSession()
-        else:
-            self.sess = requests.Session()
+        self.sess = None
+        self.use_async = use_async
         self.token = token
-        if token is not None:
-            self.sess.headers.update({"Authorization": f"Bearer {token}"})
 
     def __call__(
         self,
@@ -352,6 +352,13 @@ class ArgotModelProvider:
         tools=None,
         api_url="https://argot.p.mainly.cloud/{}/chat",
     ):
+        if self.use_async:
+            self.sess = niquests.AsyncSession()
+        else:
+            self.sess = requests.Session()
+        if self.token is not None:
+            self.sess.headers.update({"Authorization": f"Bearer {self.token}"})
+
         provider, model_id = model.split("/", 1)
         if self.token is None:
             ecx = get_execution_context()
