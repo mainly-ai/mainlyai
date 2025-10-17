@@ -2,93 +2,183 @@ import datetime
 import json
 from lxml import etree
 import networkx as nx
-from mirmod import _table_to_object_lookup, miranda
+from mirmod import miranda, workflow_object
+from mirmod.utils import logger
 import traceback
+from io import StringIO
+import os
+
+
+def _compile_and_update_api(wob: miranda.Code_block):
+    """
+    Compiles the code in a wob to discover its API attributes and updates the wob in the database.
+    This is a critical step to make sure the UI can render the wob's sockets.
+    """
+    logger.debug(f"Compiling API for wob '{wob.name}' (mid: {wob.metadata_id})")
+    if not isinstance(wob, miranda.Code_block) or not wob.body:
+        return
+
+    # Preserve values from the imported API if they exist.
+    imported_api = {}
+    if wob.api:
+        try:
+            imported_api = json.loads(wob.api)
+        except json.JSONDecodeError:
+            logger.warning(f"Could not parse existing API for wob '{wob.name}'. Values may not be preserved.")
+
+    # This function executes code, so it requires a safety flag.
+    os.environ["I_AM_IN_AN_ISOLATED_AND_SAFE_CONTEXT"] = "1"
+    try:
+        # This header is needed for the code to be valid for compilation.
+        wob_code = miranda.WOB_CODE_BLOCK_HEADER + wob.body
+        entry_class, _, _, _, _ = workflow_object._unsafe_get_code_entry_class(wob_code)
+        if entry_class:
+            # Create a lookup for imported attribute values
+            imported_values = {}
+            if imported_api and "attributes" in imported_api:
+                for attr in imported_api["attributes"]:
+                    if "value" in attr and attr.get("name"):
+                        imported_values[attr["name"]] = attr["value"]
+
+            attributes = []
+            for key, attr in entry_class.attributes.items():
+                attr_dict = {"name": key, "kind": attr.kind, "direction": attr.direction}
+                if attr.control:
+                    attr_dict["control"] = attr.control.to_dict()
+                if key in imported_values:
+                    attr_dict["value"] = imported_values[key]
+                attributes.append(attr_dict)
+            wob.api = json.dumps({"attributes": attributes, "wob_name": entry_class.name})
+            wob.update(wob.sctx)
+        else:
+            logger.warning(f"Could not find entry class in wob '{wob.name}' (mid: {wob.metadata_id}). API will not be updated from code.")
+
+    except Exception as e:
+        logger.error(f"Failed to compile API for wob '{wob.name}' (mid: {wob.metadata_id}): {e}")
+    finally:
+        del os.environ["I_AM_IN_AN_ISOLATED_AND_SAFE_CONTEXT"]
 
 
 def import_graph(ko, graphml_file):
-    G = nx.parse_graphml(graphml_file)
-    nodes = {}
+    """
+    Imports a graph from a GraphML file, creating and linking workflow objects (wobs)
+    within the context of a given Knowledge Object (ko).
+
+    Args:
+        ko (miranda.Knowledge_object): The parent Knowledge Object to which the imported wobs will be linked.
+        graphml_file (file-like object): The GraphML file to import.
+    """
+    # The graphml_file argument is a string containing the file content,
+    # so we wrap it in StringIO to make it a file-like object for networkx.
+    # networkx.read_graphml automatically handles type conversion for attributes
+    # based on the 'attr.type' specified in the GraphML <key> definitions.
+    # We do not need to provide a custom type caster.
+    G = nx.read_graphml(StringIO(graphml_file))
+
+    node_map = {}
     wobs = {}
+
+    # 1. First pass: Validate and collect all node data from the GraphML file.
     for node in G.nodes(data=True):
-        if "class" in node[1]:
-            if node[1]["class"].upper() not in _table_to_object_lookup:
-                raise Exception(f"Unknown class {node[1]['class'].upper()}")
-            if node[1]["class"].upper() != "KNOWLEDGE_OBJECT":
-                nodes[node[0]] = node[1]
-        else:
-            raise Exception(f'No node class type found for node "{node[0]}"')
-
-    for node in nodes:
-        print(f"Creating {node}")
-        node_data = nodes[node]
+        node_id, node_data = node
+        if "class" not in node_data:
+            logger.warning(f"Skipping node '{node_id}': 'class' attribute is missing.")
+            continue
         node_class = node_data["class"].upper()
-        print(f"  class: {node_class}")
-        try:
-            if node_class == "CODE" or node_class == "CODE_BLOCK":
-                wob = miranda.create_wob(
-                    ko,
-                    name=node_data["name"] if "name" in node_data else "Unnamed Code",
-                    description=node_data["description"]
-                    if "description" in node_data
-                    else "",
-                )
-                if wob.id == -1:
-                    raise Exception("Failed to create code block")
-                for attr in node_data:
-                    if attr in ["name", "description", "id", "metadata_id"]:
-                        continue
-                    print("  Setting attribute {} to {}".format(attr, node_data[attr]))
-                    if attr in wob.orm.keys():
-                        try:
-                            if attr in wob.default_value.keys():
-                                if isinstance(wob.default_value[attr], str):
-                                    setattr(wob, attr, node_data[attr])
-                                elif isinstance(wob.default_value[attr], int):
-                                    setattr(wob, attr, int(node_data[attr]))
-                                elif isinstance(wob.default_value[attr], float):
-                                    setattr(wob, attr, float(node_data[attr]))
-                            else:
-                                setattr(wob, attr, node_data[attr])
-                        except Exception as e:
-                            print(f"  Error setting attribute {attr} : {e}")
-                    else:
-                        wob.set_attribute(attr, node_data[attr])
-                wobs[node] = wob
-                wob.update(ko.sctx)
-        except Exception as e:
-            print(f"  Error: {e}")
-            print(traceback.format_exc())
+        print(f"Found node '{node_id}' of type {node_class}")
+        if node_class not in ["CODE_BLOCK"]:
+            continue
+        node_map[node_id] = node_data
 
-    for edge in G.edges(data=True):
-        print(f"Creating edge {edge[0]} -> {edge[1]}, data= {edge[2]}")
+    # 2. Second pass: Create all workflow objects.
+    for node_id, node_data in node_map.items():
+        node_class = node_data["class"].upper()
+        print(f"Creating wob '{node_data.get('name', 'Unnamed')}' of type {node_class}")
+
         try:
-            src = wobs[edge[0]]
-            dst = wobs[edge[1]]
-            print(
-                f"Translated to wob mids: edge {src.metadata_id} -> {dst.metadata_id}"
+            wob = miranda.create_wob(
+                ko,
+                name=node_data.get("name", "Unnamed Object"),
+                description=node_data.get("description", ""),
+                wob_type=node_class,
             )
-            attr: dict = json.loads(edge[2]["attributes"])
-            for dest_socket in attr.keys():
-                src_socket = attr[dest_socket]
-                print(f"  Linking {src_socket} to {dest_socket}")
-                try:
-                    if miranda.link(
-                        ko.sctx,
-                        src,
-                        dst,
-                        src_socket[0],
-                        dest_socket,
-                        datatype=src_socket[1],
-                    ):
-                        print("Error while linking")
-                except Exception as e:
-                    print(f"  Error: {e}")
-                    print(traceback.format_exc())
+            if wob.id == -1:
+                raise Exception(f"Failed to create wob for node '{node_id}'")
+
+            # Set attributes on the newly created wob
+            for attr, value in node_data.items():
+                if attr in ["class", "name", "description", "id", "metadata_id","cloned_from_id","status"]:
+                    continue
+                if hasattr(wob, attr):
+                    print(f"  Setting attribute '{attr}' to '{str(value)[:50]}...'")
+                    # Cast value to the appropriate type based on the ORM's default_value definition.
+                    if attr in wob.default_value:
+                        default_type = type(wob.default_value[attr])
+                        try:
+                            if default_type is bool:
+                                # Handle string representations of booleans
+                                if isinstance(value, str):
+                                    casted_value = value.lower() in ("true", "1", "t")
+                                else:
+                                    casted_value = bool(value)
+                            else:
+                                casted_value = default_type(value)
+                            setattr(wob, attr, casted_value)
+                        except (ValueError, TypeError) as e:
+                            print(f"  Could not cast attribute '{attr}' with value '{value}' to {default_type}. Using original value. Error: {e}")
+                            setattr(wob, attr, value)
+                    else:
+                        # If no default is defined, set the value as is.
+                        setattr(wob, attr, value)
+
+            api_str = wob.api
+            if api_str is None:
+                logger.error(f" Wob {wob.name} has invalid api string = None.")
+            try:
+                # Parse the string and then dump it back to a clean JSON string
+                wob.api = json.dumps(json.loads(api_str))
+                print ("WOB.api = ",wob.api)
+            except json.JSONDecodeError:
+                logger.error(f"  Wob '{wob.name}' has an invalid API string: '{api_str[:100]}...'. Setting to None.")
+                wob.api = None
+
+            wob.update(ko.sctx)
+            wobs[node_id] = wob
 
         except Exception as e:
-            print(f"  Error: {e}")
-            print(traceback.format_exc())
+            logger.error(f"Error creating wob for node '{node_id}': {e}")
+            logger.debug(traceback.format_exc())
+
+    # 3. Third pass: Create all edges between the created wobs.
+    for edge in G.edges(data=True):
+        src_id, dst_id, edge_data = edge
+        if src_id not in wobs or dst_id not in wobs:
+            logger.warning(f"Skipping edge from '{src_id}' to '{dst_id}': one or both nodes were not created.")
+            continue
+
+        logger.info(f"Creating edge from '{src_id}' to '{dst_id}'")
+
+        try:
+            src = wobs[src_id]
+            dst = wobs[dst_id]
+            logger.debug(f"  MIDs: {src.metadata_id} -> {dst.metadata_id}")
+
+            # Create the basic link first
+            miranda.link(ko.sctx, src, dst, verify_api=False)
+
+            # Now, set the detailed attributes for the sockets
+            attributes = json.loads(edge_data.get("attributes", "{}"))
+            if attributes:
+                miranda.set_edge_attribute(ko.sctx, src, dst, attributes)
+        except Exception as e:
+            logger.error(f"  Could not create edge from '{src_id}' to '{dst_id}': {e}")
+            logger.debug(traceback.format_exc())
+    # 4. Fourth pass: Compile APIs for all created Code_block wobs.
+    for wob in wobs.values():
+        if isinstance(wob, miranda.Code_block):
+            _compile_and_update_api(wob)
+
+
 
 
 def export_graph(graph):
