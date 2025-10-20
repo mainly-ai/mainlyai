@@ -2,6 +2,7 @@ import logging
 import time
 import json
 import threading
+from datetime import datetime, timezone
 from mirmod import miranda
 import signal
 
@@ -52,12 +53,13 @@ class NotifiedEventHandler:
     def __init__(self, config: dict):
         self.auth_token = config["auth_token"]
         self.sctx = miranda.create_security_context(temp_token=self.auth_token)
-        self.sleep_time = Sleep_time(min=2, max=60 * 60 * 2, steps=10, exponential=True)
+        self.sleep_time = Sleep_time(min=2, max=60 * 2, steps=10, exponential=True)
         self.send_response = Send_real_time_message()
         self.exit_event = threading.Event()
         self.config = config
         self.crg = config["crg_id"]
         self.runtime_manager = RuntimeManager(config)
+        self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
 
     def wait_for_event(self):
         wake_up_counter = 0
@@ -97,6 +99,16 @@ class NotifiedEventHandler:
                         )
                         exit(0)
             logging.debug("Polling for jobs")
+            try:
+                self.crg_ob.last_active = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                logging.debug(
+                    "Updating last active time (UTC): %s", self.crg_ob.last_active
+                )
+                self.crg_ob.update(self.sctx)
+            except Exception as e:
+                logging.error("Error updating last active time: %s", e)
             try:
                 job = miranda.get_message(self.sctx, f"crg_{self.crg}>job")
                 if job is None:
@@ -145,6 +157,7 @@ class PolledEventHandler:
         self.poll_interval = config["poll_interval"]
         self.runtime_manager = RuntimeManager(config)
         self.exit_event = threading.Event()
+        self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
 
     def signal_handler(self, sig, frame):
         logging.info("Exiting...")
@@ -159,6 +172,16 @@ class PolledEventHandler:
 
         while not self.exit_event.is_set():
             logging.debug("Polling for jobs")
+            try:
+                self.crg_ob.last_active = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                logging.debug(
+                    "Updating last active time (UTC): %s", self.crg_ob.last_active
+                )
+                self.crg_ob.update(self.sctx)
+            except Exception as e:
+                logging.error("Error updating last active time: %s", e)
             try:
                 job = miranda.get_message(self.sctx, f"crg_{self.config['crg_id']}>job")
                 if job is None:
