@@ -3,7 +3,7 @@ import os
 
 from mirmod import miranda
 
-from event_handler import NotifiedEventHandler, PolledEventHandler
+from .event_handler import NotifiedEventHandler, PolledEventHandler
 from . import resource_reporting, cli_args, config
 
 
@@ -65,9 +65,11 @@ def main():
         )
         return
     logging.debug("Loaded CRG: %s", crg.__repr__("jdict"))
-    if not cfg["skip_hw_check"]:
+    if not cfg["skip_hw_check"] and not args.skip_hw_check:
         logging.info("Performing hardware checks")
         resource_reporting.update_crg_maximum_resources(sctx, crg)
+    else:
+        logging.info("Skipping hardware checks")
 
     if cfg["poll_mode"]:
         logging.info("Starting in poll mode")

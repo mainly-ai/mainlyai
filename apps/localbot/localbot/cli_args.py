@@ -7,6 +7,5 @@ parser.add_argument("--crg_id", help="CRG ID", type=int, default=None)
 parser.add_argument(
     "--skip-hw-check",
     help="Skip hardware reporting stage on startup",
-    type=bool,
-    default=False,
+    action="store_true",
 )
