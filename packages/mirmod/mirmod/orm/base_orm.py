@@ -89,7 +89,8 @@ class Base_object_ORM(Attribute_tracker):
         self.wob_insert_projection = [
             re.sub(match, r"\g<field>", x)
             for x in orm.values()
-            if x.startswith("t.") and not x.startswith("t.id")
+            if (x.startswith("t.") or x.startswith("DATE_FORMAT(t."))
+            and not x.startswith("t.id")
         ]
         self.from_join_stmt = (
             f" FROM {table} as t" + " INNER JOIN metadata as m on t.metadata_id = m.id"
@@ -269,7 +270,7 @@ END
         field_list = [
             re.sub(match, r"\g<field>", k[1])
             for k in self.orm.items()
-            if k[1].startswith("t.")
+            if k[1].startswith("t.") or k[1].startswith("DATE_FORMAT(t.")
         ]
         set_stmts = ""
         for field in field_list:
@@ -696,7 +697,7 @@ END"""
             con = sc.connect()
             cursor = con.cursor()
             for obj, db in self.orm.items():
-                if db.startswith("t."):
+                if db.startswith("t.") or db.startswith("DATE_FORMAT(t."):
                     field_name = [x for x in db.split(" ")][0]
                     attribute_name = field_name[2:].strip("`")
                     if attribute_name not in self.changed_list:
@@ -729,7 +730,7 @@ END"""
             fields = [
                 k
                 for k, x in self.orm.items()
-                if x.startswith("t.")
+                if (x.startswith("t.") or x.startswith("DATE_FORMAT(t."))
                 and k not in ["id", "metadata_id"]
                 and k in self.changed_list
             ]
