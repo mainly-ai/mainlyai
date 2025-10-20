@@ -3,6 +3,7 @@ config_schema = {
     "crg_id": int,
     "poll_mode": bool,
     "poll_interval": int,
+    "skip_hw_check": bool,
     "db": {"host": str, "port": str, "database": str},
     "paths": {
         "logzod": str,

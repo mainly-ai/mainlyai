@@ -4,8 +4,7 @@ import os
 from mirmod import miranda
 
 from event_handler import NotifiedEventHandler, PolledEventHandler
-import cli_args
-import config
+from . import resource_reporting, cli_args, config
 
 
 def main():
@@ -58,6 +57,17 @@ def main():
         os.makedirs(context_path, exist_ok=True)
     else:
         logging.debug(f"Context path: {context_path}")
+
+    crg = miranda.find_object_by_id(sctx, cfg["crg_id"], "COMPUTE_RESOURCE_GROUP")
+    if crg is None or crg.id == -1:
+        logging.error(
+            f"CRG with ID {cfg['crg_id']} does not exist or is not accessible using the provided auth token."
+        )
+        return
+    logging.debug("Loaded CRG: %s", crg.__repr__("jdict"))
+    if not cfg["skip_hw_check"]:
+        logging.info("Performing hardware checks")
+        resource_reporting.update_crg_maximum_resources(sctx, crg)
 
     if cfg["poll_mode"]:
         logging.info("Starting in poll mode")

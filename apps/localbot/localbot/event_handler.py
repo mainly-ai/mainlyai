@@ -5,7 +5,7 @@ import threading
 from mirmod import miranda
 import signal
 
-from runtime_manager import RuntimeManager
+from .runtime_manager import RuntimeManager
 
 
 class Sleep_time:

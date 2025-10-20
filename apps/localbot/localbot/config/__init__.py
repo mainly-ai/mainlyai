@@ -52,6 +52,7 @@ def get_default_config():
         "crg_id": 0,
         "poll_mode": True,
         "poll_interval": 10,
+        "skip_hw_check": False,
         "db": {
             "host": "localhost",
             "port": "3306",
