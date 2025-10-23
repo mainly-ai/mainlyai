@@ -265,11 +265,11 @@ END
     def make_update_sp(self, con):
         """Create a SP for updating the workflow object using SQL"""
         set_stmts = ""
-        match = r"t\.`?(?P<field>\w*)`?\s[Aa][Ss].*"
+        match = r"(?:t\.|DATE_FORMAT\(t\.)`?(?P<field>\w*)`?.*\s[Aa][Ss].*"
         # Create list of updatable fields
         field_list = [
             re.sub(match, r"\g<field>", k[1])
-            for k in self.orm.items()
+            for k in self.orm.items() # k[0] is key, k[1] is value
             if k[1].startswith("t.") or k[1].startswith("DATE_FORMAT(t.")
         ]
         set_stmts = ""
