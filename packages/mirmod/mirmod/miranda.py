@@ -1331,7 +1331,7 @@ def get_degree(sc: Security_context, wob):
             SELECT
                 SUM(IF(dest_id = %s, 1, 0)) AS inbound_edges,
                 SUM(IF(src_id = %s, 1, 0)) AS outbound_edges
-            FROM v_edges;
+            FROM v_edges WHERE src_type = 'CODE' and dest_type = 'CODE';
             """
             cursor.execute(sql, (metadata_id, metadata_id))
             rs = cursor.fetchone()
@@ -1661,6 +1661,7 @@ def create_attribute_edge_list(ko: Knowledge_object) -> list[dict]:
                     "kind": tr[1],
                 }
                 edges.append(e)
+    return edges
 
 
 def create_attribute_graph(edge_list: list[dict]) -> nx.DiGraph:
