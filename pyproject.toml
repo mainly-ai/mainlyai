@@ -46,7 +46,7 @@ cwd = "./apps/localbot"
 
 [project]
 name = "mainlyai"
-version = "0.1.0"
+version = "5.3.0"
 description = "Mainly AI monorepo"
 readme = "README.md"
 requires-python = ">=3.12"
