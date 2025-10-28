@@ -17,6 +17,7 @@ from .video import Video
 from .audio import Audio
 from .imagemask import ImageMask
 from .chat_preview import ChatPreview
+from .codeeditor import CodeEditor
 
 __all__ = [
     "Notice",
@@ -38,4 +39,5 @@ __all__ = [
     "Audio",
     "ImageMask",
     "ChatPreview",
+    "CodeEditor",
 ]
