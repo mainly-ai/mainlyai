@@ -204,14 +204,12 @@ class Base_object_ORM(Attribute_tracker):
 CREATE DEFINER=miranda_internal@'localhost' PROCEDURE {self.sp_create}({self.sp_param_list})  NOT DETERMINISTIC MODIFIES SQL DATA
 BEGIN
 DECLARE db_user VARCHAR(40) DEFAULT "nouser";
-SET db_user = CURRENT_MIRANDA_USER();
-SET db_user = REGEXP_REPLACE(db_user,'^miranda_','');
+SET db_user = CURRENT_MIRANDA_USER_UNPREFIXED();
 SELECT ID FROM users WHERE username = db_user INTO @userid;
 IF @userid IS NULL THEN
   SIGNAL SQLSTATE '45000'
 	SET MESSAGE_TEXT = "Could not find user name in the user table.";
 END IF;
-SET db_user = CONCAT('miranda_',db_user);
 INSERT INTO metadata (`Created_by_id`,`Name`,`Description`,`cloned_from_id`) VALUES (@userid,name,description,cloned_from_id);
 SELECT LAST_INSERT_ID() INTO @metadata_id;
 INSERT INTO {self.table_name} (`metadata_id`,{",".join(self.sp_workflow_object_insert_fields_quoted)}) VALUES (@metadata_id,{",".join(self.sp_workflow_object_insert_fields_quoted)});
@@ -238,7 +236,7 @@ END
         self.create_view_stmt = f"""
             CREATE DEFINER = miranda_internal@localhost
             VIEW {self.view} AS
-                        (WITH userid (uid) AS (SELECT id FROM users WHERE CONCAT('miranda_',username) = CURRENT_MIRANDA_USER()),
+                        (WITH userid (uid) AS (SELECT id FROM users WHERE username = CURRENT_MIRANDA_USER_UNPREFIXED()),
                             owned (mid) AS (SELECT m.id FROM metadata m
                                 INNER JOIN users u ON m.created_by_id=u.id
                                 INNER JOIN userid ON userid.uid = u.id
@@ -269,7 +267,7 @@ END
         # Create list of updatable fields
         field_list = [
             re.sub(match, r"\g<field>", k[1])
-            for k in self.orm.items() # k[0] is key, k[1] is value
+            for k in self.orm.items()  # k[0] is key, k[1] is value
             if k[1].startswith("t.") or k[1].startswith("DATE_FORMAT(t.")
         ]
         set_stmts = ""
@@ -357,7 +355,7 @@ BEGIN
 
   {set_stmts}
 
-  WITH userid (uid) AS (SELECT id FROM users WHERE CONCAT('miranda_',username) = CURRENT_MIRANDA_USER()),
+  WITH userid (uid) AS (SELECT id FROM users WHERE username = ()),
     owned (mid) AS (SELECT m.id FROM metadata m
                           INNER JOIN users u ON m.created_by_id=u.id
                           INNER JOIN userid ON userid.uid = u.id
