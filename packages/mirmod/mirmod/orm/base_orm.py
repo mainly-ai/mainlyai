@@ -355,7 +355,7 @@ BEGIN
 
   {set_stmts}
 
-  WITH userid (uid) AS (SELECT id FROM users WHERE username = ()),
+  WITH userid (uid) AS (SELECT id FROM users WHERE username = CURRENT_MIRANDA_USER_UNPREFIXED()),
     owned (mid) AS (SELECT m.id FROM metadata m
                           INNER JOIN users u ON m.created_by_id=u.id
                           INNER JOIN userid ON userid.uid = u.id
