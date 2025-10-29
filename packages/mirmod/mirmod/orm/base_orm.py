@@ -85,7 +85,7 @@ class Base_object_ORM(Attribute_tracker):
         self.view_projection_stmt2 = ",".join(
             [re.sub(r"^.* (as|AS) ", "v.", x) for x in orm.values()]
         )
-        match = r"t\.`?(?P<field>\w*)`?\s[Aa][Ss].*"
+        match = r"(?:DATE_FORMAT\()?t\.`?(?P<field>\w*)`?(?:,'[^']*'\))?\s[Aa][Ss].*"
         self.wob_insert_projection = [
             re.sub(match, r"\g<field>", x)
             for x in orm.values()
