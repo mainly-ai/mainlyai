@@ -50,11 +50,11 @@ def get_default_config():
     return {
         "auth_token": "",
         "crg_id": 0,
-        "poll_mode": True,
+        "poll_mode": False,
         "poll_interval": 10,
         "skip_hw_check": False,
         "db": {
-            "host": "localhost",
+            "host": "instance-production-mysql1",
             "port": "3306",
             "database": "miranda",
         },
