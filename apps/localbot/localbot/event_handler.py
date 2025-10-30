@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import time
 import json
@@ -7,6 +8,31 @@ from mirmod import miranda
 import signal
 
 from .runtime_manager import RuntimeManager
+
+
+class ProcessorStates(str, Enum):
+    Uninitialized = "UNINITIALIZED"
+    Starting = "STARTING"
+    Ready = "READY"
+    Running = "RUNNING"
+    Error = "ERROR"
+    Exited = "EXITED"
+    ResumeReady = "RESUMEREADY"
+    Killing = "KILLING"
+    Queued = "QUEUED"
+    Restarting = "RESTARTING"
+
+
+ACTIVE_STATES = [
+    ProcessorStates.Uninitialized,
+    ProcessorStates.Starting,
+    ProcessorStates.Ready,
+    ProcessorStates.Running,
+    ProcessorStates.ResumeReady,
+    ProcessorStates.Killing,
+    ProcessorStates.Queued,
+    ProcessorStates.Restarting,
+]
 
 
 class Sleep_time:
@@ -117,11 +143,43 @@ class NotifiedEventHandler:
                 logging.debug("Received job: %s", job)
                 payload = json.loads(job["payload"])
                 project_id = int(job["wob_id"])
-                wob_type = job["wob_type"]
+                wob_type = job["wob_type"].upper()
                 req_sc = miranda.create_security_context(temp_token=payload["token"])
-                if wob_type.upper() == "DOCKER_JOB":
-                    docker_mid = job["wob_id"]
-                    print("TODO: Reset Docker mid " + str(docker_mid))
+
+                if payload["action"] == "destroy" and wob_type == "DOCKER_JOB":
+                    logging.info(
+                        "Force destroying docker job for project %s", project_id
+                    )
+                    docker_job = miranda.Docker_job(req_sc, id=project_id)
+                    if docker_job.id == -1:
+                        logging.warning(
+                            "Failed to find docker job with id %s", project_id
+                        )
+                        continue
+                    docker_job.workflow_state = "EXITED"
+                    docker_job.update(req_sc)
+
+                    # get parent ko from docker job
+                    try:
+                        ko = next(
+                            miranda.find_wob_by_inbound_edges(
+                                req_sc,
+                                docker_job.metadata_id,
+                                filter=lambda x: x is not None,
+                            )
+                        )
+                        logging.debug("Found parent ko: %s", ko.__repr__("jdict"))
+                        if ko is not None and ko.id != -1:
+                            self.runtime_manager.destroy_runtime(ko.id)
+                        else:
+                            logging.warning(
+                                "Failed to find parent ko for docker job with id %s",
+                                project_id,
+                            )
+                            continue
+                    except Exception as e:
+                        logging.exception("Error finding parent ko: %s", e)
+                        continue
                     continue
 
                 ko = miranda.Knowledge_object(req_sc, id=project_id)
@@ -190,7 +248,45 @@ class PolledEventHandler:
                 logging.debug("Received job: %s", job)
                 payload = json.loads(job["payload"])
                 project_id = int(job["wob_id"])
+                wob_type = job["wob_type"].upper()
                 req_sc = miranda.create_security_context(temp_token=payload["token"])
+
+                if payload["action"] == "destroy" and wob_type == "DOCKER_JOB":
+                    logging.info(
+                        "Force destroying docker job for project %s", project_id
+                    )
+                    docker_job = miranda.Docker_job(req_sc, id=project_id)
+                    if docker_job.id == -1:
+                        logging.warning(
+                            "Failed to find docker job with id %s", project_id
+                        )
+                        continue
+                    docker_job.workflow_state = "EXITED"
+                    docker_job.update(req_sc)
+
+                    # get parent ko from docker job
+                    try:
+                        ko = next(
+                            miranda.find_wob_by_inbound_edges(
+                                req_sc,
+                                docker_job.metadata_id,
+                                filter=lambda x: x is not None,
+                            )
+                        )
+                        logging.debug("Found parent ko: %s", ko.__repr__("jdict"))
+                        if ko is not None and ko.id != -1:
+                            self.runtime_manager.destroy_runtime(ko.id)
+                        else:
+                            logging.warning(
+                                "Failed to find parent ko for docker job with id %s",
+                                project_id,
+                            )
+                            continue
+                    except Exception as e:
+                        logging.exception("Error finding parent ko: %s", e)
+                        continue
+                    continue
+
                 ko = miranda.Knowledge_object(req_sc, id=project_id)
                 logging.debug("Found project: %s", ko.__repr__("jdict"))
                 if ko.id == -1:
