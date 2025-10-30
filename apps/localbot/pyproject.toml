@@ -5,7 +5,8 @@ description = ""
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "ulid2"
+    "ulid2",
+    "mirmod"
 ]
 
 [dependency-groups]
@@ -16,7 +17,7 @@ dev = [
 ]
 
 [tool.uv]
-package = false
+package = true
 
 [build-system]
 requires = ["hatchling"]
