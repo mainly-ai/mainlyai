@@ -695,7 +695,7 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                 )
             )
             continue
-        with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w") as f:
+        with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w+") as f:
             f.write(runtime_code)
         if wob_key not in code_cache:
             try:
@@ -715,15 +715,18 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                         org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
                         runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
                         code_cache[wob_key] = load_plugin(
-                            WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
-                    )
+                            WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
+                            "WOB{}".format(wob.metadata_id),
+                        )
                 elif wob.code_type == "PYTHON":
                     code_cache[wob_key] = load_plugin(
-                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
+                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
+                        "WOB{}".format(wob.metadata_id),
                     )
                 else:
                     code_cache[wob_key] = load_plugin(
-                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),"WOB{}".format(wob.metadata_id)
+                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
+                        "WOB{}".format(wob.metadata_id),
                     )
             except Exception:
                 print(
@@ -2389,8 +2392,7 @@ def create_execution_plan(NG, cached_wobs, code_cache):
                 code_cache=code_cache, wob_cache=cached_wobs
             )
             s = generate_execution_plan(subgraph)
-            plan = [ss for ss in s]
-            all_plans.extend(plan)
+            all_plans.extend(s)
         else:
             pass  # ignore all nodes not part of a DAG
 

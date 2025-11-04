@@ -42,7 +42,18 @@ def show_graph(G: nx.DiGraph, wob_cache: dict = None):
 
     plt.figure(figsize=(16, 10))
     pos = nx.spring_layout(G, k=0.5, iterations=50)
-    nx.draw(G, pos, labels=labels or None, with_labels=True, node_size=3000, node_color="skyblue", font_size=8, font_weight="bold", arrows=True, arrowsize=20)
+    nx.draw(
+        G,
+        pos,
+        labels=labels or None,
+        with_labels=True,
+        node_size=3000,
+        node_color="skyblue",
+        font_size=8,
+        font_weight="bold",
+        arrows=True,
+        arrowsize=20,
+    )
     plt.show()
 
 
@@ -793,7 +804,7 @@ class Default_node_iterator:
 
         subgraph = self.graph.subgraph(subgraph.nodes)
 
-        #show_graph(subgraph, self.wob_cache)
+        # show_graph(subgraph, self.wob_cache)
 
         # Perform a topological sort on the induced subgraph.
         # remove all init nodes.
@@ -808,7 +819,7 @@ class Default_node_iterator:
                 nodes = r_G.nodes() | l_G.nodes()
                 G = self.graph.subgraph(nodes).copy()
                 G.add_edge(pair[0], pair[1])
-                #show_graph(G, self.wob_cache)
+                # show_graph(G, self.wob_cache)
             self.sorted_nodes = list(nx.topological_sort(G))
         else:
             # Eliminate nodes and paths not connected to the start node.
@@ -820,11 +831,9 @@ class Default_node_iterator:
                     nodes_to_sort = component.union(
                         nx.ancestors(subgraph, self.start_node_mid)
                     )
-                    sg= self.graph.subgraph(nodes_to_sort)
-                    #show_graph(sg, self.wob_cache)
-                    self.sorted_nodes = list(
-                        nx.topological_sort(sg)
-                    )
+                    sg = self.graph.subgraph(nodes_to_sort)
+                    # show_graph(sg, self.wob_cache)
+                    self.sorted_nodes = list(nx.topological_sort(sg))
                     break
         try:
             # Because of how we iterate over the sorted nodes we need to swap the order so that the first
@@ -834,7 +843,7 @@ class Default_node_iterator:
             start_node_idx = self.sorted_nodes.index(self.start_node_mid)
             self.sorted_nodes[0] = self.start_node_mid
             self.sorted_nodes[start_node_idx] = first_node
-            self.current_index = 0 #self.sorted_nodes.index(self.start_node_mid)
+            self.current_index = 0  # self.sorted_nodes.index(self.start_node_mid)
         except Exception:
             pass
         self.transmitter_receiver_count = 0  # Reset counter again for iteration
@@ -1831,7 +1840,7 @@ class Generate_execution_plan:
             return True
         return False
 
-    def has_field_or_dispatches(self,G):
+    def has_field_or_dispatches(self, G):
         for n in G.nodes():
             if has_connected_transmitter_field(G, n, self.code_cache):
                 return True
@@ -1847,7 +1856,9 @@ class Generate_execution_plan:
         if self.dispatch_field is None and not self.has_field_or_dispatches(G):
             plan = nx.topological_sort(G)
             for n in plan:
-                self.execution_plan.append(Execution_node(G, n, self.code_cache, self.wob_cache))
+                self.execution_plan.append(
+                    Execution_node(G, n, self.code_cache, self.wob_cache)
+                )
             return self.execution_plan
 
         # Update start_nodes with the valid ones
@@ -1981,7 +1992,11 @@ class Generate_execution_plan:
             pass
 
         plan_with_init_nodes = []
+        seen = set()
         for n in self.execution_plan:
+            if n.node_mid in seen:
+                continue
+            seen.add(n.node_mid)
             fields = n.is_part_of_field
             f = fields.get("-", None)
             if f is not None and f.transmitter_mid == n.node_mid:
