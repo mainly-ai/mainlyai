@@ -37,6 +37,8 @@ import copy
 import asyncio
 import nest_asyncio
 from typing import Optional
+from collections import deque
+import threading, queue, pty, os
 from types import ModuleType
 
 pickle.settings["recurse"] = True
@@ -44,7 +46,16 @@ pickle.load_types(pickleable=True, unpickleable=True)
 nest_asyncio.apply()
 
 
-_the_global_context = {"process_context": {}, "web_server_thread": None}
+_the_global_context = {
+    "process_context": {},
+    "web_server_thread": None,
+    "terminal_server": {
+        "process": None,
+        "pid": None,
+        "reader_thread": None,
+    },
+}
+
 ##########################
 # execute_node() exit codes.
 E_PROCEED_TO_NEXT_NODE = 0  # normal execution; mark node as executed and move instr ptr
@@ -241,6 +252,10 @@ ALL_PROCESSOR_COMMANDS = {
     "git-push": "Push the latest version of the node code to the git repository.",
     "git-soft-pull": "Pull the latest version of the code from the git repository without updating the nodes.",
     "run-setup": "Run setup sequence for the nodes in the graph.",
+    "terminal-push": "Push a command to a listening terminal process.",
+    "terminal-pull": "Pull the output log from a listening terminal process.",
+    "terminal-stop": "Stop the listening terminal process.",
+    "terminal-start": "Start the listening terminal process.",
 }
 
 
@@ -436,7 +451,7 @@ class CommandActor(CommandActorBase):
         rs = json.loads(rows[0]["payload"])
         self.tag = rs.get("tag", None)
         i = rs["command"]
-        # print ("|=> Received command: {}".format(i))
+        print("|=> Received command: {}".format(i))
         self.command = self.validate(i)
         return self.command
 
@@ -463,7 +478,7 @@ class CommandActor(CommandActorBase):
             try:
                 miranda.notify_gui(self.sctx, json.dumps(message))
             except Exception as e:
-                print("DEBUG: notify_gui failed: ", e)
+                print("notify_gui failed: ", e)
             # print ("|=> {}".format(message))
 
     def close(self):
@@ -2587,6 +2602,10 @@ async def enter_interactive_mode(
             "git-soft-pull": "Pull a changeset from github for review",
             "git-push": "Push the content of a node to github",
             "run-setup": "Run the setup code for the current graph.",
+            "terminal-push": "Push a command to a listening terminal process.",
+            "terminal-pull": "Pull the output log from a listening terminal process.",
+            "terminal-stop": "Stop the listening terminal process.",
+            "terminal-start": "Start the listening terminal process.",
         }
 
         i = ca.input("> ")
@@ -2622,6 +2641,8 @@ async def enter_interactive_mode(
         #    execution_context.get_security_context(), NG, all_wobs=True
         # )
         run_setup_for_all_code(execution_context)
+    elif cmd.startswith("terminal-"):
+        handle_terminal_cmd(ca, cmd, ko)
     elif (
         cmd.startswith("start")
         or cmd.startswith("restart")
@@ -2955,6 +2976,7 @@ async def process_knowledge_object(
         cmd = None
         while cmd is None:
             cmd = ca.input("> ")
+            print(cmd)
             if cmd is None:
                 ca.send_response("ERROR: Not a valid command.")
                 continue
@@ -2993,6 +3015,11 @@ async def process_knowledge_object(
                 # We will most likely reach here because run_setup_code will restart the processor
                 # so this code is just to be safe.
                 ca.ready_signal = "READY"
+                ca.send_response({"status": "READY"})
+                continue
+            if cmd.startswith("terminal-"):
+                handle_terminal_cmd(ca, cmd, ko)
+                cmd = None
                 ca.send_response({"status": "READY"})
                 continue
             # TODO add git-pull, git-push
@@ -3099,6 +3126,263 @@ def process_message(sc, docker_job, src_ob, dest_ob, message={}, use_time_delta=
     return message
 
 
+def _read_terminal_output(master_fd, buffer, exit_event: threading.Event):
+    """Reader function to run in a thread, consuming process output."""
+    try:
+        while not exit_event.is_set():
+            data = os.read(master_fd, 1024)
+            if not data:
+                # print("_read_terminal_output: EOF, exiting reader thread.")
+                break
+            decoded_data = data.decode("utf-8", errors="replace")
+            # print(f"read from terminal: {decoded_data}", end="")
+            buffer.put(decoded_data)
+    except OSError:
+        pass  # master_fd is closed
+
+
+def _terminal_output_poller(
+    ca: CommandActor, ko: miranda.Knowledge_object, exit_event: threading.Event
+):
+    """Polls terminal output and sends it to the client."""
+    global _the_global_context
+    # Create a new security context for this thread to avoid SSL issues with mysql connector
+    # which isn't thread safe.
+    temp_token = os.getenv("WOB_TOKEN")
+    thread_sctx = miranda.create_security_context(temp_token=temp_token)
+    thread_ca = CommandActor(thread_sctx, ca.docker_job, ko, ca.deployed)
+    thread_ca.trigger_run = True
+    while not exit_event.is_set():
+        terminal_server = _the_global_context.get("terminal_server")
+        if not terminal_server:
+            print("Stopping because terminal server is gone")
+            break  # Stop if terminal server is gone
+
+        pid = terminal_server.get("pid")
+        if pid:
+            if os.waitpid(pid, os.WNOHANG)[0] != 0:
+                print("Stopping because process has terminated")
+                break  # Stop if process has terminated
+
+        try:
+            # Block for up to 1 second waiting for data
+            message = terminal_server["output_buffer"].get(timeout=1)
+            messages = [message]
+            # Drain any other messages that arrived in the meantime
+            while not terminal_server["output_buffer"].empty():
+                messages.append(terminal_server["output_buffer"].get_nowait())
+            # print(f"DEBUG: Poller sending {len(messages)} messages to client.")
+            thread_ca.send_response(
+                {"action": "TERMINAL_PULL", "data": "".join(messages)}
+            )
+        except queue.Empty:
+            continue  # Timeout, just loop again
+
+
+def start_terminal_server(ca: CommandActor, ko: miranda.Knowledge_object):
+    """Starts a new terminal server subprocess if one isn't running."""
+    global _the_global_context
+    terminal_server = _the_global_context.get("terminal_server")
+
+    if terminal_server and terminal_server.get("pid"):
+        pid = terminal_server.get("pid")
+        try:
+            # Check if the process is still running without blocking
+            if os.waitpid(pid, os.WNOHANG)[0] == 0:
+                print(f"Terminal server is already running with PID: {pid}")
+                return
+        except ChildProcessError:
+            print(f"Found stale PID {pid}. Starting a new terminal server.")
+        return
+
+    print("Starting terminal server...")
+    try:
+        pid, master_fd = pty.fork()
+        if pid == 0:  # Child process
+            # This code runs in the child process.
+            # It replaces the child process with a shell.
+            os.environ["BASH_SILENCE_DEPRECATION_WARNING"] = "1"
+            shell = os.environ.get("SHELL", "/bin/bash")
+            argv = [shell, "-i"]
+            os.execv(shell, argv)
+
+        output_buffer = queue.Queue(maxsize=1000)  # Store last 1000 lines
+
+        exit_event = threading.Event()
+
+        # Start a thread to read output without blocking
+        reader_thread = threading.Thread(
+            target=_read_terminal_output,
+            args=(master_fd, output_buffer, exit_event),
+            daemon=True,
+        )
+
+        # Start a thread to poll for output
+        poller_thread = threading.Thread(
+            target=_terminal_output_poller, args=(ca, ko, exit_event), daemon=True
+        )
+
+        _the_global_context["terminal_server"] = {
+            "exit_event": exit_event,
+            "pid": pid,
+            "master_fd": master_fd,
+            "output_buffer": output_buffer,
+            "reader_thread": reader_thread,
+            "poller_thread": poller_thread,
+        }
+        print(f"Terminal server started with PID: {pid}")
+        reader_thread.start()
+        poller_thread.start()
+
+    except Exception as e:
+        print(f"ERROR: Failed to start terminal server: {e}")
+        traceback.print_exc()
+
+
+def stop_terminal_server():
+    """
+    Stops the running terminal server subprocess reliably.
+    This function attempts a graceful shutdown first, then escalates to a forceful
+    kill if necessary. If it fails to terminate the process, it will exit the
+    main processor to force a restart.
+    """
+    global _the_global_context
+    terminal_server = _the_global_context.get("terminal_server")
+
+    if not (terminal_server and terminal_server.get("pid")):
+        print("|=> No terminal server to stop.")
+        return
+
+    pid = terminal_server.get("pid")
+    master_fd = terminal_server.get("master_fd")
+    reader_thread = terminal_server.get("reader_thread")
+    poller_thread = terminal_server.get("poller_thread")
+    exit_event = terminal_server.get("exit_event")
+
+    # 1. Signal threads to exit
+    if exit_event and not exit_event.is_set():
+        print("|=> Setting exit event for terminal threads.")
+        exit_event.set()
+
+    # 2. Close the master file descriptor to unblock the reader thread
+    if master_fd:
+        try:
+            os.close(master_fd)
+        except OSError as e:
+            print(f"|=> Warning: Could not close master_fd: {e}")
+
+    # 3. Terminate the process with a timeout and escalation
+    if pid:
+        try:
+            # Check if process is running
+            if os.waitpid(pid, os.WNOHANG)[0] == 0:
+                print(f"|=> Stopping terminal server with PID: {pid}")
+                os.kill(pid, 15)  # Send SIGTERM for graceful shutdown
+                time.sleep(2)  # Wait 2 seconds
+
+                # Check again if it terminated
+                if os.waitpid(pid, os.WNOHANG)[0] == 0:
+                    print(f"|=> Terminal server {pid} did not stop, sending SIGKILL.")
+                    os.kill(pid, 9)  # Send SIGKILL for forceful shutdown
+                    time.sleep(1)
+
+                # Final check
+                if os.waitpid(pid, os.WNOHANG)[0] == 0:
+                    print(f"|=> FATAL: Could not terminate terminal process {pid}.")
+                    print("|=> Shutting down processor to recover.")
+                    sys.exit(200)
+                else:
+                    print("|=> Terminal server stopped.")
+        except ChildProcessError:
+            print("|=> Terminal server was not running or already reaped.")
+        except Exception as e:
+            print(f"|=> ERROR: Failed to stop terminal process {pid}: {e}")
+            print("|=> Shutting down processor to recover.")
+            sys.exit(200)
+
+    # 4. Wait for threads to finish
+    if reader_thread and reader_thread.is_alive():
+        reader_thread.join(timeout=2)
+        if reader_thread.is_alive():
+            print("|=> Warning: Reader thread did not terminate in time.")
+    if poller_thread and poller_thread.is_alive():
+        poller_thread.join(timeout=2)
+        if poller_thread.is_alive():
+            print("|=> Warning: Poller thread did not terminate in time.")
+
+    # 5. Reset the context
+    _the_global_context["terminal_server"] = {
+        "pid": None,
+        "master_fd": None,
+        "output_buffer": None,
+        "reader_thread": None,
+        "poller_thread": None,
+        "exit_event": None,
+    }
+
+
+def send_to_terminal_server(command: str):
+    """Sends a command to the terminal server's stdin."""
+    global _the_global_context
+    terminal_server = _the_global_context.get("terminal_server")
+    master_fd = terminal_server.get("master_fd") if terminal_server else None
+    pid = terminal_server.get("pid") if terminal_server else None
+
+    if master_fd and pid and os.waitpid(pid, os.WNOHANG)[0] == 0:
+        try:
+            # Extract b64 encoded part
+            decoded_command = base64.b64decode(command).decode("utf-8")
+            os.write(master_fd, (decoded_command + "\n").encode("utf-8"))
+        except Exception as e:
+            print(f"|=> ERROR: Failed to send command to terminal: {e}")
+    else:
+        print("|=> ERROR: Cannot send command, terminal server is not running.")
+
+
+def receive_from_terminal_server() -> list:
+    """Receives all currently buffered output from the terminal server."""
+    global _the_global_context
+    terminal_server = _the_global_context.get("terminal_server")
+    output_buffer = terminal_server.get("output_buffer") if terminal_server else None
+
+    if output_buffer:
+        messages = []
+        while not output_buffer.empty():
+            try:
+                messages.append(output_buffer.get_nowait())
+            except queue.Empty:
+                break
+        return messages
+    return []
+
+
+def handle_terminal_cmd(ca: CommandActor, cmd: str, ko: miranda.Knowledge_object):
+    c = cmd.strip()
+    if " " in cmd:
+        c, p = cmd.split(" ")
+        c = c.strip()
+        p = p.strip()
+    else:
+        p = ""
+    if c == "terminal-start":
+        # Create / or restart the process which listen to a unix pipe for shell commands to execute
+        # and record the stdout / stderr messages in time order to a buffer awaiting collection.
+        print("Starting the terminal server...")  # ko is not available here
+        start_terminal_server(ca, ko)
+        ca.send_response({"action": "TERMINAL_START", "data": "OK"})
+    elif c == "terminal-stop":
+        # Stop or kill the process created by start_terminal_server()
+        print("Stopping the terminal server...")
+        ca.send_response({"action": "TERMINAL_STOP", "data": "ACK"})
+        stop_terminal_server()
+    elif c == "terminal-push":
+        ca.send_response({"action": "TERMINAL_PUSH", "data": "ACK"})
+        send_to_terminal_server(p)
+    elif c == "terminal-pull":
+        messages = receive_from_terminal_server()
+        ca.send_response({"action": "TERMINAL_PULL", "data": messages})
+
+
 if __name__ == "__main__":
     try:
         temp_token = os.getenv("WOB_TOKEN")
@@ -3107,6 +3391,10 @@ if __name__ == "__main__":
         # logger.debug("Connecting with temp_token={}".format(temp_token))
         sc = miranda.create_security_context(temp_token=temp_token)
 
+        with sc.connect() as con:
+            with con.cursor() as cur:
+                cur.execute("SELECT substring(CURRENT_MIRANDA_USER(),9)")
+                rs = cur.fetchall()
         assert message is not None, "WOB_MESSAGE environment variable not set."
         wob_id = message["wob_id"]
         wob_type = message["wob_type"]

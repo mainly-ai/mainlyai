@@ -232,5 +232,5 @@ class Security_context:
         if self.connection is not None:
             if self.connection.is_connected():
                 self.connection.close()
-        if self.pool is not None:
-            self.pool.closeall()
+        # if self.pool is not None:
+        #    self.pool.closeall()

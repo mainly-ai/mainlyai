@@ -278,7 +278,7 @@ def create_security_context(
     auth_from_config=False,
     system_path=None,
     temp_token=None,
-    auth_string_is_already_hashed=False,
+    auth_string_is_already_hashed=False,  # TODO: remove this parameter
     pool_size: int = None,
 ):
     if system_path is None:
@@ -404,7 +404,7 @@ def delete_object(obj, objid_array=None, cascading=False, hard=True):
             # Drop all references to this knowledge object
             # TODO don't delete the entire KO if the obj isn't a KO
             if hard:
-                cursor.callproc("sp_delete_graph_by_mid", [obj.metadata_id,5])
+                cursor.callproc("sp_delete_graph_by_mid", [obj.metadata_id, 5])
                 for result in cursor.stored_results():
                     rows = result.fetchall()
                     logger.debug("hard deleted rows: %s", rows)
@@ -413,7 +413,7 @@ def delete_object(obj, objid_array=None, cascading=False, hard=True):
                 cursor.close()
                 logger.info("Deleted number of {} objects".format(affected))
             else:
-                cursor.callproc("sp_soft_delete_graph_by_mid", [obj.metadata_id,5])
+                cursor.callproc("sp_soft_delete_graph_by_mid", [obj.metadata_id, 5])
                 for result in cursor.stored_results():
                     rows = result.fetchall()
                     logger.debug("soft deleted rows: %s", rows)
@@ -621,7 +621,10 @@ def create_graph(
         logger.error(e)
         traceback.print_exc()
 
-def find_objects_by_metadata_ids(sc: Security_context, ids: dict[str, list[int]], fields: dict[str, list[str]] = {}):
+
+def find_objects_by_metadata_ids(
+    sc: Security_context, ids: dict[str, list[int]], fields: dict[str, list[str]] = {}
+):
     """
     Find objects by their IDs.
     ids is a dictionary of object types to lists of IDs.
@@ -632,11 +635,15 @@ def find_objects_by_metadata_ids(sc: Security_context, ids: dict[str, list[int]]
     with con.cursor(dictionary=True) as cur:
         for type, id_list in ids.items():
             obtype = table_to_object(type)
-            sql = obtype(sc, -1).get_projection(fields.get(type, None)) + f" WHERE metadata_id IN ({','.join(str(id) for id in id_list)})"
+            sql = (
+                obtype(sc, -1).get_projection(fields.get(type, None))
+                + f" WHERE metadata_id IN ({','.join(str(id) for id in id_list)})"
+            )
             cur.execute(sql)
             for row in cur.fetchall():
                 rs.append(obtype(sc, metadata_id=row["metadata_id"]))
     return rs
+
 
 def traverse_tree(
     ko: Knowledge_object, action, drop_ko=False, filter_type=lambda x: False
@@ -2278,6 +2285,11 @@ def is_uv_venv():
     except Exception as e:
         logger.warning(f"is_uv_venv(): {e}")
         return False
+
+
+async def execute_wob(wob, **kwargs):
+    # 1. receive all arguments from kwargs
+    pass
 
 
 class StopIterationToken:
