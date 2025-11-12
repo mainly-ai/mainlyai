@@ -389,6 +389,26 @@ def find_object_by_id(sc: Security_context, id: int, type: str = "CODE"):
     return table_to_object(type)(sc, id=id)
 
 
+def find_objects_by_ids(
+    sc: Security_context, ids: list[int], type: str = "CODE", fields: list[str] = None
+):
+    template_cls = table_to_object(type)
+    template_ob = template_cls(sc, -1)
+    sql = f"SELECT * FROM v_{template_ob.table_name}"
+    if fields is not None:
+        sql = template_ob.get_projection(fields)
+    sql += " WHERE id IN ({})".format(",".join([str(id) for id in ids]))
+    con = sc.connect()
+    rs = []
+    with con.cursor(dictionary=True) as cursor:
+        cursor.execute(sql)
+        rs = cursor.fetchall()
+    for r in rs:
+        ob = template_cls(sc)
+        ob._load_from_resultset_dict(r)
+        yield ob
+
+
 def delete_object(obj, objid_array=None, cascading=False, hard=True):
     """Delete a Base_object_ORM by ID from the database. If an array of IDs is supplied then all corresponding objects will be deleted."""
     sctx = obj.sctx
@@ -641,7 +661,9 @@ def find_objects_by_metadata_ids(
             )
             cur.execute(sql)
             for row in cur.fetchall():
-                rs.append(obtype(sc, metadata_id=row["metadata_id"]))
+                ob = obtype(sc)
+                ob._load_from_resultset_dict(row)
+                rs.append(ob)
     return rs
 
 
