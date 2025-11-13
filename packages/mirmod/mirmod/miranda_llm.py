@@ -5,6 +5,7 @@ import json
 import inspect
 from enum import Enum
 
+
 class AsyncStreamingSSEParser:
     """
     Parses a stream of Server-Sent Events (SSE) line by line and
@@ -301,12 +302,14 @@ class StreamingSSEParser:
             # else: ignore retry field if value is not all digits
         # else: ignore unknown field
 
+
 class LLMMessageRole(str, Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
+
 
 class LLMMessage:
     def __init__(self, role: LLMMessageRole, content):
@@ -316,18 +319,20 @@ class LLMMessage:
     def to_dict(self):
         return {"role": self.role, "content": self.content}
 
+
 class LLMToolCall:
     def __init__(self, call_id: str, function: str, arguments: str):
         self.role = LLMMessageRole.TOOL_CALL
         self.call_id = call_id
         self.function = function
         self.arguments = arguments
+
     def to_dict(self):
         return {
             "role": self.role,
             "call_id": self.call_id,
             "function": self.function,
-            "arguments": self.arguments
+            "arguments": self.arguments,
         }
 
 
@@ -336,6 +341,7 @@ class LLMToolResult:
         self.role = LLMMessageRole.TOOL_RESULT
         self.call_id = call_id
         self.content = content
+
 
 class ArgotModelProvider:
     def __init__(self, token, use_async=True):
@@ -742,7 +748,7 @@ class ArgotConfiguredModel:
 
         url = self._api_url.format(self._provider)
 
-        print(data)
+        # print(data)
 
         # TODO change to async IO
         r = await self._sess.post(url, data=json.dumps(data))
