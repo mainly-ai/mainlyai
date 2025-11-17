@@ -2,6 +2,7 @@
 # Copyright (c) 2023,2024,2025 MainlyAI - contact@mainly.ai
 #
 from mirmod import miranda, workflow_object
+from mirmod import platform_versions
 from mirmod import processor_graph as pg
 from mirmod.execution_context import (
     Execution_context_api,
@@ -451,7 +452,7 @@ class CommandActor(CommandActorBase):
         rs = json.loads(rows[0]["payload"])
         self.tag = rs.get("tag", None)
         i = rs["command"]
-        print("|=> Received command: {}".format(i))
+        # print("|=> Received command: {}".format(i))
         self.command = self.validate(i)
         return self.command
 
@@ -632,31 +633,24 @@ def cache_wobs(sc, G, all_wobs=False):
     """The graph contains the metadata id of each code block, but we need to load the entire code block into memory in order
     to get API and code body so we can later call the transmitters and receivers."""
     cached_wobs: dict = {}
-    order_of_execution = list(G.nodes)
-    for ob in order_of_execution:
-        if G.nodes[int(ob)]["type"] == "code":
-            cached_wobs[int(ob)] = miranda.Code_block(sc, metadata_id=int(ob))
-            setattr(cached_wobs[int(ob)], "executed", False)
+    obs = miranda.find_objects_by_metadata_ids(sc, {"CODE": list(G.nodes)})
+    for ob in obs:
+        cached_wobs[ob.metadata_id] = ob
+        setattr(cached_wobs[ob.metadata_id], "executed", False)
     return cached_wobs
 
 
-def construct_property_edge_list(sc, NG, cache):
+def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
     """Set the edge property if the NG graph."""
-    for e in NG.edges():
-        src_ob = cache[e[0]]
-        if src_ob.id == -1:
-            print(
-                '|=> WARNING: Skipping edge with source metadata_id "{}" because it doesn\'t exist in the database'.format(
-                    e[0]
-                )
-            )
-            continue  # Ignore all but the basic Code_blocks
-        dst_ob = cache[e[1]]
-        assert dst_ob.id != -1, (
-            "Can't find destination object with metadata_id {}".format(e[1])
-        )
-        attr: dict = miranda.get_edge_attribute(sc, src_ob, dst_ob)
-        if attr is not None:
+    for e in NG.edges:
+        NG.edges[e]["attributes"] = []
+    edge_request = [f"{e[0]}-{e[1]}" for e in NG.edges]
+    # NOTE: bulk_get_edge_attributes yields values but for some reason if
+    # use the yield in the for loop we drop the first element for unknown reason
+    # hence we make sure to collect all in a list before continuing.
+    attrs = [attr for attr in miranda.bulk_get_edge_attributes(sc, edge_request)]
+    for attr in attrs:
+        for e0, e1, attr in attrs:
             for receiver in attr.keys():
                 tr = attr[receiver]
                 a = {
@@ -664,13 +658,12 @@ def construct_property_edge_list(sc, NG, cache):
                     "destination_receiver_key": receiver,
                     "kind": tr[1],
                 }
-                if "attributes" not in NG.edges[e[0], e[1]]:
-                    NG.edges[e[0], e[1]]["attributes"] = []
-                NG.edges[e[0], e[1]]["attributes"].append(a)
+                NG.edges[e0, e1]["attributes"].append(a)
 
 
 def cache_code_and_init_nodes(NG, cached_wobs):
     """Compile all code and initialize all nodes."""
+    start_time = time.time()
     code_cache: dict = {}
     for i, wob in enumerate(cached_wobs.values()):
         api = wob.api
@@ -760,6 +753,10 @@ def cache_code_and_init_nodes(NG, cached_wobs):
                 WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
             )
 
+    end_time = time.time()
+    print(
+        f"|=> DEBUG: cache_code_and_init_nodes took {end_time - start_time:.4f} seconds"
+    )
     return code_cache
 
 
@@ -1205,7 +1202,8 @@ class _Execution_context(Execution_context_api):
             self.execution_graph, wob.metadata_id, self.code_cache, self.cached_wobs
         )
         code = self.code_cache[wob.metadata_id]
-        await code.wob._execute(code.wob)
+        exec(code, code.__dict__)
+
         # Restore the current node to the previous value (the executer)
         self.current_node = old_current_node
 
@@ -2406,7 +2404,12 @@ def create_execution_plan(NG, cached_wobs, code_cache):
             generate_execution_plan = pg.Generate_execution_plan(
                 code_cache=code_cache, wob_cache=cached_wobs
             )
+            start_time = time.time()
             s = generate_execution_plan(subgraph)
+            end_time = time.time()
+            print(
+                f"|=> DEBUG: generate_execution_plan took {end_time - start_time} seconds"
+            )
             all_plans.extend(s)
         else:
             pass  # ignore all nodes not part of a DAG
@@ -2976,7 +2979,6 @@ async def process_knowledge_object(
         cmd = None
         while cmd is None:
             cmd = ca.input("> ")
-            print(cmd)
             if cmd is None:
                 ca.send_response("ERROR: Not a valid command.")
                 continue
@@ -3413,6 +3415,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
         # Find inbound edges and create edge list
+        print("|=> Version: {}".format(platform_versions.PLATFORM_VERSION))
         process_message(sc, docker_job, ob, None, message)
 
     except SystemExit as e:

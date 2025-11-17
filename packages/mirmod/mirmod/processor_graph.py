@@ -463,61 +463,49 @@ def find_last_reciever_mid(G, start_node_mid, attribute, code_cache):
 def find_transmitter_receiver_pairs(
     G: nx.DiGraph, code_cache={}, transmitter_field_branch=None
 ) -> list[tuple[int, int]]:
-    if transmitter_field_branch is not None:
-        branch_edge = transmitter_field_branch[0]
-        src, dst = (
-            branch_edge  # Extract source and destination nodes of the branch edge
-        )
+    # Identify all potential transmitter and receiver nodes at the beginning.
+    all_transmitters = {
+        n for n in G.nodes if has_connected_transmitter_field(G, n, code_cache)
+    }
+    all_receivers = {n for n in G.nodes if has_receiver_field(G, n, None, code_cache)}
 
-        # Extract the branch: all nodes reachable from dst
-        connected_nodes = set(
-            [n for n in nx.descendants(G, dst) if isinstance(n, int)]
-        ) | {dst}
+    # These sets will shrink as we find pairs.
+    unpaired_transmitters = all_transmitters.copy()
+    unpaired_receivers = all_receivers.copy()
 
-        transmitters = [
-            n
-            for n in connected_nodes
-            if has_connected_transmitter_field(G, n, code_cache)
-        ]
-        receivers = [n for n in connected_nodes if has_receiver_field(n, code_cache)]
+    final_pairs = []
 
-        # Ensure the original transmitter (src) is included
-        if src not in transmitters and src in G.nodes:
-            transmitters.append(src)
-    else:
-        transmitters = [
-            n for n in G.nodes if has_connected_transmitter_field(G, n, code_cache)
-        ]
-        receivers = [n for n in G.nodes if has_receiver_field(G, n, None, code_cache)]
-    pairs = []
     while True:
-        pair_found_this_round = False
-        for t in transmitters[:]:
-            for r in receivers[:]:
+        found_this_round = []
+        # Iterate over copies as we will modify the original sets.
+        for t in list(unpaired_transmitters):
+            for r in list(unpaired_receivers):
+                if t == r:
+                    continue
                 try:
-                    all_paths = nx.all_simple_paths(G, source=t, target=r)
-                    valid_path_found = False
-                    for path in all_paths:
+                    # Check for a "clean" path: no other *unpaired* T or R in between.
+                    for path in nx.all_simple_paths(G, source=t, target=r):
                         interior_nodes = path[1:-1]
-                        if all(
-                            n not in transmitters and n not in receivers
+                        # A path is clean if none of its interior nodes are currently unpaired.
+                        if not any(
+                            n in unpaired_transmitters or n in unpaired_receivers
                             for n in interior_nodes
                         ):
-                            valid_path_found = True
-                            break
-                    if valid_path_found:
-                        pairs.append((t, r))
-                        transmitters.remove(t)
-                        receivers.remove(r)
-                        pair_found_this_round = True
-                        break
+                            found_this_round.append((t, r))
+                            break  # Found a clean path for this (t,r) pair.
                 except nx.NetworkXNoPath:
-                    pass
-            if pair_found_this_round:
-                break
-        if not pair_found_this_round:
-            break
-    return pairs
+                    continue
+
+        if not found_this_round:
+            break  # No more pairs can be found, exit the loop.
+
+        for t, r in found_this_round:
+            final_pairs.append((t, r))
+            # Once paired, remove them from the sets of unpaired nodes.
+            unpaired_transmitters.discard(t)
+            unpaired_receivers.discard(r)
+
+    return final_pairs
 
 
 def determine_nesting(G: nx.DiGraph, pairs: list[tuple[int, int]]):
@@ -765,7 +753,6 @@ class Default_node_iterator:
         self.execution_planner = execution_planner
         self.sorted_nodes = []
         self.current_index = 0
-        self.encountered_transmitter = False
         self.neighbourhood = {"out_edges": iter([])}
 
     def get_start_node(self):
@@ -782,22 +769,17 @@ class Default_node_iterator:
             if has_transmitter_field(G, node_mid, attr, self.code_cache)
         ]
 
-        if self.encountered_transmitter:
+        if len(transmitter_attrs) > 0:
             return False
 
         if "is_dispatcher" in G.nodes[node_mid]:
             return False  # This is a processed Dispatcher_node
-
-        if len(transmitter_attrs) > 0:
-            self.encountered_transmitter = True
-            return False
 
         return True
 
     def set_start_node(self, node_mid, neighbourhood={}):
         self.start_node_mid = node_mid
         self.sorted_nodes = []
-        self.encountered_transmitter = False
         self.transmitter_receiver_count = 0  # Reset the counter
 
         _, subgraph = split_graph(self.graph.copy(), node_mid, include_node=True)
@@ -812,14 +794,40 @@ class Default_node_iterator:
         if len(tr_pairs) > 0:
             outermost_pairs = find_outermost_pair(subgraph, tr_pairs)
 
-            G = self.graph.copy()
+            G: nx.DiGraph = self.graph.copy()
+
+            # show_graph(G, self.wob_cache)
             for pair in outermost_pairs:
-                a, r_G = split_graph(G.copy(), pair[1], include_node=True)
-                l_G, b = split_graph(G.copy(), pair[0], include_node=True)
-                nodes = r_G.nodes() | l_G.nodes()
-                G = self.graph.subgraph(nodes).copy()
-                G.add_edge(pair[0], pair[1])
+                # identify the field node by the negative mid of the transmitter field node.
+                field_node_id = -pair[0]
+                # A "field" consists of all nodes that are ancestors of the receiver
+                # but are NOT also ancestors of the transmitter.
+                # This correctly includes any "initialization" branches that feed into the field.
+                ancestors_of_receiver = nx.ancestors(self.graph, pair[1])
+                ancestors_of_transmitter = nx.ancestors(self.graph, pair[0])
+                nodes_in_field = ancestors_of_receiver - ancestors_of_transmitter
+                nodes_in_field.add(pair[0])
+                nodes_in_field.add(pair[1])
+
+                # Contract the field into a single node
+                G.add_node(field_node_id)
+
+                # Reconnect edges
+                for u, v, data in self.graph.edges(data=True):
+                    if u in nodes_in_field and v not in nodes_in_field:
+                        # Outgoing edge from the field
+                        G.add_edge(field_node_id, v, **data)
+                    # An inbound edge can also be from the transmitter itself.
+                    elif (
+                        u not in nodes_in_field and v in nodes_in_field or u == pair[0]
+                    ):
+                        # Incoming edge to the field
+                        G.add_edge(u, field_node_id, **data)
+
+                G.remove_nodes_from(nodes_in_field)
                 # show_graph(G, self.wob_cache)
+
+            # Trimmed graph without fields.
             self.sorted_nodes = list(nx.topological_sort(G))
         else:
             # Eliminate nodes and paths not connected to the start node.
@@ -871,6 +879,11 @@ class Default_node_iterator:
                 self.wob_cache,
             )
         node = self.sorted_nodes[self.current_index]
+        if node < 0:
+            # This is a field node transmitter that we collapsed
+            # The check_domain logic will make sure we are transferred to
+            # the Field_transmitter for the transmitter nodes.
+            node = -node
         en = Execution_node(self.graph, node, self.code_cache, self.wob_cache)
         self.neighbourhood = {
             "out_edges": iter([n for n in self.graph.out_edges(en.node_mid)]),
@@ -1243,6 +1256,11 @@ class Field_iterator:
         self.last_node_in_field = False
         self.dispatch_field = dispatch_field
 
+        # A set to keep track of nodes that have already been added to an init plan for this field.
+        # This prevents reprocessing and duplication when multiple inbound edges
+        # share common ancestors.
+        self.processed_init_nodes = set()
+
     def get_start_node(self):
         return self.start_node
 
@@ -1347,6 +1365,10 @@ class Field_iterator:
             if inbound_node in current_field.field_nodes:
                 continue
 
+            # If we have already processed this node as part of an init subgraph, skip it.
+            if inbound_node in self.processed_init_nodes:
+                continue
+
             # Check if there's a path from the current transmitter to this inbound node
             # If there is, it's not an initialization node
             if nx.has_path(self.graph, current_field.transmitter_mid, inbound_node):
@@ -1402,6 +1424,8 @@ class Field_iterator:
                         data
                     )  # Efficiently update node attributes
 
+            # Add all nodes from this init subgraph to the processed set
+            self.processed_init_nodes.update(init_subgraph_nodes)
             # If this is connected to nodes outside of the field we might get some duplicates; lets remove them
             visited = set([e.node_mid for e in self.execution_planner.execution_plan])
             filtered = [e for e in init_execution_plan if e.node_mid not in visited]
@@ -1813,7 +1837,7 @@ class Generate_execution_plan:
             ):
                 if node_mid in self.dispatcher:
                     iterator = self.dispatcher[node_mid]
-                # print ("** SWITCH: ", type(iterator))
+                # print("** SWITCH: ", type(iterator))
                 iterator.set_start_node(node_mid)
                 # issue a signal to the current iterator that we're leaving
                 if self.next_node_itr:

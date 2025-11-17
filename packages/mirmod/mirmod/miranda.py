@@ -1198,10 +1198,10 @@ def bulk_get_edge_attributes(sc, edge_keys):
         return []
 
     con = sc.connect()
-    placeholders = ", ".join(["%s"] * len(edge_keys))
+    placeholders = ", ".join(['"{}"'.format(key) for key in edge_keys])
     sql = f"SELECT e.src_id,e.dest_id,e.attributes FROM v_edges e WHERE e.edge_key in ({placeholders})"
     with con.cursor() as cur:
-        cur.execute(sql, edge_keys)
+        cur.execute(sql)
         for rs in cur:
             try:
                 if rs[2] is not None:
@@ -2284,6 +2284,17 @@ def get_message(sc: Security_context, subject: str):
 
 def is_uv_venv():
     try:
+        # More robust check for `uv run`: check if `uv` is in the same bin as python.
+        # sys.executable is the path to the python interpreter.
+        python_path = sys.executable
+        if python_path:
+            # The executable is in the 'bin' directory of the venv.
+            bin_path = os.path.dirname(python_path)
+            uv_executable_path = os.path.join(bin_path, "uv")
+            if os.path.exists(uv_executable_path):
+                return True
+
+        # Fallback to checking pyvenv.cfg for environments created with `uv venv`.
         venv_path = os.environ.get("VIRTUAL_ENV", "")
 
         if venv_path:
