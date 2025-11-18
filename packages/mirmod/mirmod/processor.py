@@ -664,6 +664,7 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
 def cache_code_and_init_nodes(NG, cached_wobs):
     """Compile all code and initialize all nodes."""
     start_time = time.time()
+    compiled_code_cache: dict[int, object] = {}
     code_cache: dict = {}
     for i, wob in enumerate(cached_wobs.values()):
         api = wob.api
@@ -707,35 +708,35 @@ def cache_code_and_init_nodes(NG, cached_wobs):
             f.write(runtime_code)
         if wob_key not in code_cache:
             try:
+                # Create a hash of the code to use as a cache key.
+                code_hash = hash(runtime_code)
                 if wob.update_policy == "SUBSCRIBE":
-                    # fetch body attribute from the wob with the metadata_id = wob.cloned_from_id
-                    # check cache if the clone wob already exists in the cache
-                    # TODO why can't the compiled code be deepcopied?
-                    # if wob.cloned_from_id in code_cache:
-                    # use cached code block
-                    #  code_cache[wob_key] = code_cache[wob.cloned_from_id]
-                    #  code_cache[wob_key].wob = copy.deepcopy(code_cache[wob.cloned_from_id].wob)
-                    # else:
-                    # load the clone into the code cache and use it
-                    if wob.code_type != "PYTHON":
-                        runtime_code = make_wob_runtime_code(wob, wob_key)
-                    else:
-                        org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
-                        runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
-                        code_cache[wob_key] = load_plugin(
-                            WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
-                            "WOB{}".format(wob.metadata_id),
-                        )
-                elif wob.code_type == "PYTHON":
-                    code_cache[wob_key] = load_plugin(
-                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
-                        "WOB{}".format(wob.metadata_id),
+                    org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
+                    runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
+                    code_hash = hash(runtime_code)
+
+                if code_hash not in compiled_code_cache:
+                    # If code is not cached, compile it and store the compiled code object.
+                    # The filename includes the wob_key for better traceback messages.
+                    filename = WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
+                    compiled_code = compile(
+                        runtime_code, filename=filename, mode="exec"
                     )
-                else:
-                    code_cache[wob_key] = load_plugin(
-                        WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id),
-                        "WOB{}".format(wob.metadata_id),
-                    )
+                    compiled_code_cache[code_hash] = compiled_code
+
+                # Retrieve the compiled code from the cache.
+                cached_compiled_code = compiled_code_cache[code_hash]
+
+                # Create a new, empty module object for this specific node.
+                # The name is unique to avoid conflicts in sys.modules.
+                module_name = f"WOB{wob.metadata_id}"
+                spec = importlib.util.spec_from_loader(module_name, loader=None)
+                new_module = importlib.util.module_from_spec(spec)
+                sys.modules[module_name] = new_module
+
+                # Execute the cached compiled code in the new module's namespace.
+                exec(cached_compiled_code, new_module.__dict__)
+                code_cache[wob_key] = new_module
             except Exception:
                 print(
                     '|=> WARNING: Skipping code block "{}" ({}) because it failed to compile'.format(
