@@ -1080,8 +1080,14 @@ def clone_object(
     d = {}
     for p in params:
         d[p] = getattr(obj, p)
-    if set_cloned_from:
+    if set_cloned_from and not isinstance(obj, Code_block):
         d["cloned_from_id"] = obj.metadata_id
+    elif isinstance(obj, Code_block):
+        # Always set cloned from when we're cloning Code_blocks.
+        if obj.cloned_from_id == -1:
+            d["cloned_from_id"] = obj.metadata_id
+        else:
+            d["cloned_from_id"] = obj.cloned_from_id
     if hasattr(obj2, "update_policy"):
         # override the update policy with the new value
         if obj.update_policy == "SUBSCRIBE":
