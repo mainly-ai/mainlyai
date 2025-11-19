@@ -386,6 +386,13 @@ class ArgotModelProvider:
         )
 
 
+class LLMReasoningEffort(str, Enum):
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class ArgotModelParams:
     def __init__(
         self,
@@ -395,6 +402,7 @@ class ArgotModelParams:
         top_p: float = None,
         top_k: int = None,
         parallel_tool_calls: bool = None,
+        reasoning_effort: LLMReasoningEffort = None,
     ):
         self.id = id
         self.max_tokens = max_tokens
@@ -402,6 +410,7 @@ class ArgotModelParams:
         self.top_p = top_p
         self.top_k = top_k
         self.parallel_tool_calls = parallel_tool_calls
+        self.reasoning_effort = reasoning_effort.value if reasoning_effort else None
 
     def to_dict(self):
         return {k: v for k, v in self.__dict__.items() if v is not None}
