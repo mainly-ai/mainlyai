@@ -385,6 +385,7 @@ class CommandActor(CommandActorBase):
             print("|=> ", debug_prompt)
             # with self.sctx.connect() as con:
             con = self.sctx.connect()
+            con.commit()  # Make sure we don't have any uncommitted transactions here.
             with con.cursor(dictionary=True) as cur:
                 # print ("DEBUG: get_wob_message_for_processor({})".format(self.wob_id))
                 cur.callproc("get_wob_message_for_processor", (self.wob_id,))
@@ -417,6 +418,7 @@ class CommandActor(CommandActorBase):
                         print("|=> Woke up from sleep.", debug_prompt)
                     else:
                         print("|=> Woke up from sleep.")
+                con.commit()
 
                 if didnt_get_any_notification:
                     print(
