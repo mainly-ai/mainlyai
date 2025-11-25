@@ -382,10 +382,9 @@ class CommandActor(CommandActorBase):
         wake_up_counter = 0
         rows = []
         while True:
-            print("|=> ", debug_prompt)
+            # print("|=> ", debug_prompt)
             # with self.sctx.connect() as con:
             con = self.sctx.connect()
-            con.commit()  # Make sure we don't have any uncommitted transactions here.
             with con.cursor(dictionary=True) as cur:
                 # print ("DEBUG: get_wob_message_for_processor({})".format(self.wob_id))
                 cur.callproc("get_wob_message_for_processor", (self.wob_id,))
@@ -414,18 +413,18 @@ class CommandActor(CommandActorBase):
                     didnt_get_any_notification = True
                 except Exception:
                     # NOTE: Error is 2013: Lost connection to MySQL server during query which is expected.
-                    if len(debug_prompt) > 0:
-                        print("|=> Woke up from sleep.", debug_prompt)
-                    else:
-                        print("|=> Woke up from sleep.")
-                con.commit()
+                    # if len(debug_prompt) > 0:
+                    #    print("|=> Woke up from sleep.", debug_prompt)
+                    # else:
+                    #    print("|=> Woke up from sleep.")
+                    pass
 
                 if didnt_get_any_notification:
-                    print(
-                        "|=> Didn't get any notifications after {} seconds. Retrying... ({} {}))".format(
-                            s, wake_up_counter, debug_prompt
-                        )
-                    )
+                    # print(
+                    #    "|=> Didn't get any notifications after {} seconds. Retrying... ({} {}))".format(
+                    #        s, wake_up_counter, debug_prompt
+                    #    )
+                    # )
                     time.sleep(1)
                     wake_up_counter += 1
                     if wake_up_counter > 20:
@@ -434,6 +433,8 @@ class CommandActor(CommandActorBase):
                             debug_prompt,
                         )
                         self.send_response({"status": "EXITED"})
+                        cur.close()
+                        con.close()
                         exit(0)
 
     def input(self, prompt):
@@ -2898,6 +2899,7 @@ def run_setup_for_all_code(execution_context: _Execution_context):
     execution_context.get_process_context()["{}_SETUP_COMPLETE".format(ko.id)] = (
         now.strftime("%Y-%m-%d %H:%M:%S")
     )
+    con.close()
     exit(200)  # We use exit code 200 to indicate willful exit with restart.
 
 
@@ -2944,6 +2946,7 @@ def run_setup_code(
         now.strftime("%Y-%m-%d %H:%M:%S")
     )
     if no_start:
+        execution_context.get_security_context().close()
         exit(200)  # We use exit code 200 to indicate willful exit with restart.
         return
     if execution_context.target_wob_mid != -1:
@@ -2955,6 +2958,7 @@ def run_setup_code(
     execution_context.get_process_context()[restart_command] = now.strftime(
         "%Y-%m-%d %H:%M:%S"
     )
+    execution_context.get_security_context().close()
     exit(200)  # We use exit code 200 to indicate willful exit with restart.
 
 
