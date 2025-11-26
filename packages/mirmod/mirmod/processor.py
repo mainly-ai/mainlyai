@@ -652,6 +652,7 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
     # use the yield in the for loop we drop the first element for unknown reason
     # hence we make sure to collect all in a list before continuing.
     attrs = [attr for attr in miranda.bulk_get_edge_attributes(sc, edge_request)]
+    seen = set()
     for attr in attrs:
         for e0, e1, attr in attrs:
             for receiver in attr.keys():
@@ -661,7 +662,11 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
                     "destination_receiver_key": receiver,
                     "kind": tr[1],
                 }
-                NG.edges[e0, e1]["attributes"].append(a)
+                b = (e0, e1, tr[0], receiver)
+                if b not in seen:
+                    seen.add(b)
+                    attributes = NG.edges[e0, e1]["attributes"]
+                    attributes.append(a)
 
 
 def cache_code_and_init_nodes(NG, cached_wobs):

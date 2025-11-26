@@ -1205,7 +1205,7 @@ def bulk_get_edge_attributes(sc, edge_keys):
 
     con = sc.connect()
     placeholders = ", ".join(['"{}"'.format(key) for key in edge_keys])
-    sql = f"SELECT e.src_id,e.dest_id,e.attributes FROM v_edges e WHERE e.edge_key in ({placeholders})"
+    sql = f"SELECT DISTINCT e.src_id,e.dest_id,e.attributes FROM v_edges e WHERE e.edge_key in ({placeholders})"
     with con.cursor() as cur:
         cur.execute(sql)
         for rs in cur:
