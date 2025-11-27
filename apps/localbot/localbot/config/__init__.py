@@ -22,12 +22,17 @@ def read_config(config_file):
 
 
 def validate_config(config, schema, dir_level, branch_key):
+    default_config = get_default_config()
     if branch_key is not None:
         schema = schema[branch_key]
+        default_config = default_config[branch_key]
 
     for k, v in schema.items():
         if k not in config:
-            raise Exception('Missing key on "{}": {}'.format(dir_level, k))
+            config[k] = default_config[k]
+            logging.warning(
+                f"Missing key {k} in config, using default value {default_config[k]}"
+            )
         if type(v) is dict:
             validate_config(config[k], schema, "{}.{}".format(dir_level, k), k)
         elif str(type(config[k])) != str(v):
@@ -93,6 +98,7 @@ def get_default_config():
         except Exception as e:
             raise Exception(f"logzod not found in PATH and failed to download: {e}")
     return {
+        "runtime_manager": "localbot.runtime_manager",
         "auth_token": "",
         "crg_id": 0,
         "poll_mode": False,

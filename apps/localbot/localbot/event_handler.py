@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from mirmod import miranda
 import signal
 
-from .runtime_manager import RuntimeManager
+import importlib
 
 
 class ProcessorStates(str, Enum):
@@ -77,6 +77,19 @@ class Send_real_time_message:
 
 class NotifiedEventHandler:
     def __init__(self, config: dict):
+        try:
+            if "runtime_manager" not in config:
+                raise Exception("Runtime manager not specified in config")
+
+            logging.info("Using runtime manager: %s", config["runtime_manager"])
+            RuntimeManager = importlib.import_module(
+                config["runtime_manager"]
+            ).RuntimeManager
+            self.runtime_manager = RuntimeManager(config)
+        except Exception as e:
+            logging.error("Error importing custom runtime manager: %s", e)
+            raise e
+
         self.auth_token = config["auth_token"]
         self.sctx = miranda.create_security_context(temp_token=self.auth_token)
         self.sleep_time = Sleep_time(min=2, max=60 * 2, steps=10, exponential=True)
@@ -84,7 +97,6 @@ class NotifiedEventHandler:
         self.exit_event = threading.Event()
         self.config = config
         self.crg = config["crg_id"]
-        self.runtime_manager = RuntimeManager(config)
         self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
 
     def wait_for_event(self):
@@ -210,10 +222,22 @@ class NotifiedEventHandler:
 
 class PolledEventHandler:
     def __init__(self, config: dict):
+        try:
+            if "runtime_manager" not in config:
+                raise Exception("Runtime manager not specified in config")
+
+            logging.info("Using runtime manager: %s", config["runtime_manager"])
+            RuntimeManager = importlib.import_module(
+                config["runtime_manager"]
+            ).RuntimeManager
+            self.runtime_manager = RuntimeManager(config)
+        except Exception as e:
+            logging.error("Error importing custom runtime manager: %s", e)
+            raise e
+
         self.config = config
         self.sctx = miranda.create_security_context(temp_token=config["auth_token"])
         self.poll_interval = config["poll_interval"]
-        self.runtime_manager = RuntimeManager(config)
         self.exit_event = threading.Event()
         self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
 

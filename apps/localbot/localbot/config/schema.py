@@ -1,4 +1,5 @@
 config_schema = {
+    "runtime_manager": str,
     "auth_token": str,
     "crg_id": int,
     "poll_mode": bool,
