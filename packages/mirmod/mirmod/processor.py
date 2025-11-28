@@ -1444,7 +1444,7 @@ def replace_wob_patterns(trace, get_wob_source_details):
 
     # Find and replace WOB-xxxx patterns with the function call
     # NOTE: sub must correspond to the WOB_FILE_TEMPLATE_PATH
-    return re.sub(r'File ".*\/WOB-(\d+).py", line (\d+), in (\w*)', replacement, trace)
+    return re.sub(r'.*WOB-(\d+).py", line (\d+), in (\w*)', replacement, trace)
 
 
 def handle_code_exception(execution_context, src_wob_key, e):
