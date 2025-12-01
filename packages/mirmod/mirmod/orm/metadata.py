@@ -32,7 +32,7 @@ def _add_edge(con, src_type, dest_type, src, dest):
     try:
         cursor.callproc("sp_link", [src_type, dest_type, src, dest])
     except Exception as err:
-        logger.error("sp_link failed", err)
+        logger.error("sp_link failed %s", err)
         raise mysql.connector.IntegrityError
     con.commit()
     for result in cursor.stored_results():
