@@ -579,7 +579,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         for method_frame, properties, body in self.channel.consume(self.queue_name, auto_ack=True):
             payload = body.decode()
             # return [{wob_id, wob_type, payload, priority, write_ts, read_ts, target, user}]
-            self.connection.close()
+            # self.connection.close()
             return [payload]
 
     def input(self, prompt):
