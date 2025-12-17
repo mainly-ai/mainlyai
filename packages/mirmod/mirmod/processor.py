@@ -977,11 +977,15 @@ class _Execution_context(Execution_context_api):
         target_wob_mid=-1,
         execution_graph=None,
         deployed=False,
+        command_actor = None
     ):
         global _the_global_context
         self.deployed = deployed
+        self.command_actor = command_actor
+        if self.command_actor is None:
+            self.command_actor = CommandActorRabbitMQ(current_user, sc, docker_job, ko, deployed=deployed)
         self.debugger: MirandaDebugger = MirandaDebugger(
-            CommandActorRabbitMQ(current_user, sc, docker_job, ko, deployed=deployed), self
+            command_actor, self
         )
         self.reset(
             sc,
@@ -1388,6 +1392,7 @@ class _Execution_context(Execution_context_api):
             target_wob_mid=self.target_wob_mid,
             execution_graph=self.execution_graph,
             deployed=self.deployed,
+            command_actor = self.command_actor
         )
 
         # 2) Copy over all mutable state except SC/thread/global
@@ -2587,7 +2592,7 @@ def create_execution_plan(NG, cached_wobs, code_cache):
     return all_plans
 
 
-def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1):
+def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1, command_actor=None):
     assert isinstance(target_wob_mid, int), (
         "ERROR: reload_graph: target_wob_mid must be an integer."
     )
@@ -2628,6 +2633,7 @@ def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob
             cached_wobs,
             {},
             deployed=run_as_deployed,
+            command_actor = command_actor
         )
         handle_code_exception(fake_execution_context, e.wob_key, e.exception)
         raise e.exception
@@ -2663,6 +2669,7 @@ def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob
         target_wob_mid=target_wob_mid,
         execution_graph=NG,
         deployed=run_as_deployed,
+        command_actor = command_actor
     )
 
     return (execution_context, order_of_execution, cached_wobs, code_cache, NG)
@@ -2858,6 +2865,7 @@ async def enter_interactive_mode(
                         execution_context.get_knowledge_object(),
                         run_as_deployed,
                         target_wob_mid=int(target_wob_mid),
+                        command_actor = ca
                     )
                     execution_context.reload_graph = False
             execution_context.enable_debug_mode()
@@ -3168,7 +3176,7 @@ async def process_knowledge_object(
                 print("|=> Running setup code for the current graph.")
                 delete_process_context_keys_with_suffix(suffix="SETUP_COMPLETE")
                 execution_context, order_of_execution, cached_wobs, code_cache, NG = (
-                    reload_graph(current_user,docker_job, ko, False)
+                    reload_graph(current_user,docker_job, ko, False, command_actor=ca)
                 )
                 cmd = None
                 jaction = {"action": "run-setup", "data": {}}
@@ -3215,7 +3223,8 @@ async def process_knowledge_object(
     docker_job.update(sc)
     execution_context, order_of_execution, cached_wobs, code_cache, NG = reload_graph(
         current_user,
-        docker_job, ko, run_as_deployed, target_wob_mid=int(target_wob_mid)
+        docker_job, ko, run_as_deployed, target_wob_mid=int(target_wob_mid),
+        command_actor=ca,
     )
     execution_context.reload_graph = False
 
@@ -3240,6 +3249,7 @@ async def process_knowledge_object(
                     execution_context.get_knowledge_object(),
                     run_as_deployed,
                     target_wob_mid=int(target_wob_mid),
+                    command_actor=ca
                 )
             )
 
