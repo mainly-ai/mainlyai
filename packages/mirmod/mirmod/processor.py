@@ -579,7 +579,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         for method_frame, properties, body in self.channel.consume(self.queue_name, auto_ack=True):
             payload = body.decode()
             # self.connection.close()
-            return [payload]
+            return payload
 
     def input(self, prompt):
         """Get a debug command from the message queue."""
