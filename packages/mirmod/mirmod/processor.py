@@ -41,6 +41,9 @@ from typing import Optional
 from collections import deque
 import threading, queue, pty, os
 from types import ModuleType
+import pika
+import random
+
 
 pickle.settings["recurse"] = True
 pickle.load_types(pickleable=True, unpickleable=True)
@@ -488,6 +491,148 @@ class CommandActor(CommandActorBase):
     def close(self):
         self.send_response({"status": "EXITED"})
 
+class CommandActorRabbitMQ(CommandActorBase):
+    def __init__(
+        self,
+        current_user: str,
+        sc: miranda.Security_context,
+        docker_job,
+        ko: miranda.Knowledge_object,
+        deployed=False,
+    ):
+        self.commands = {
+            "next": "Step to the next line of code",
+            "step": "Step inside function.",
+            "continue": "Continue execution until next breakpoint",
+            "clear": "Clear all breakpoints",
+            "stop": "Stop execution",
+            "start": "Start or restart execution of graph. <mid> is the metadata id of the node to start from. <enc> is an encoded string containing breakpoints",
+            "restart": "Restart execution of graph.",
+            "info": "Information about the current execution state.",
+        }
+        self.command = None
+        self.sctx = sc
+        self.wob_id = ko.id
+        self.wob_mid = ko.metadata_id
+        self.tag = None
+        self.ready_signal = "RESUMEREADY"
+        self.docker_job = docker_job
+        self.trigger_run = False
+        self.deployed = deployed
+        k = "{}_RUN".format(ko.id)
+        self.trigger_run = k in _the_global_context["process_context"]
+        if self.trigger_run:
+            del _the_global_context["process_context"][k]
+        write_process_context_to_disk()
+        self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+        self.rabbitmq_port = int(os.getenv("RABBITMQ_PORT", 5672))
+        self.rabbitmq_user = current_user
+        self.rabbitmq_pass = sc.temp_token
+        self.consumer_id = os.getenv("CONSUMER_ID", random.randint(0, 999999))
+        self.connection = None
+        self.channel = None
+        self._connect()
+
+    def _connect(self):
+        credentials = pika.PlainCredentials(self.rabbitmq_user, self.rabbitmq_pass)
+        self.rabbitmq_parameters = pika.ConnectionParameters(
+            self.rabbitmq_host, self.rabbitmq_port, "/", credentials
+        )
+        self.connection = pika.BlockingConnection(self.rabbitmq_parameters)
+        exchange_name = "DOCKER_JOB:{}".format(self.docker_job.metadata_id)
+        topic = "processor"
+
+        self.queue_name = (
+                    f"{exchange_name}.{topic}.{self.consumer_id}"
+                )
+        self.channel = self.connection.channel()
+        self.channel.exchange_declare(exchange=exchange_name, exchange_type="topic", durable=True)
+        self.channel.queue_declare(queue=self.queue_name, exclusive=False, durable=True, auto_delete=True)
+        self.channel.queue_bind(exchange=exchange_name, queue=self.queue_name, routing_key="processor")
+
+
+    def validate(self, command: str):
+        command = command.strip()
+        if " " in command:
+            cmd, param = command.split(" ")
+        else:
+            cmd = command
+        if cmd not in self.commands.keys():
+            self.send_response(
+                "Invalid command. These are valid commands:\n{}".format(
+                    "\n".join(
+                        ["  {}: {}".format(k, v) for k, v in self.commands.items()]
+                    )
+                )
+            )
+            return None
+        return command
+
+    def clear_command_queue(self):
+        pass
+
+    def wait_for_event(self, sleep_time, debug_prompt=""):
+        self.send_response({"status": self.ready_signal})
+
+        if not self.connection or self.connection.is_closed or not self.channel or not self.channel.is_open:
+            self._connect()
+        for method_frame, properties, body in self.channel.consume(self.queue_name, auto_ack=True):
+            payload = body.decode()
+            # return [{wob_id, wob_type, payload, priority, write_ts, read_ts, target, user}]
+            self.connection.close()
+            return [payload]
+
+    def input(self, prompt):
+        """Get a debug command from the message queue."""
+        if self.trigger_run:
+            self.trigger_run = False
+            self.command = "start"
+            self.send_response({"status": "RUNNING"})
+            return self.command
+        self.send_response({"status": self.ready_signal})
+        rows = None
+        self.clear_command_queue()
+        print("|=> Waiting for debug command...")
+        sleep_time = Sleep_time(min=2, max=60 * 60 * 2, steps=20, exponential=True)
+        rows = self.wait_for_event(sleep_time)
+        self.send_response({"status": "RUNNING"})
+        # We get here only if we got a result set.
+        rs = json.loads(rows[0]["payload"])
+        self.tag = rs.get("tag", None)
+        i = rs["command"]
+        # print("|=> Received command: {}".format(i))
+        self.command = self.validate(i)
+        return self.command
+
+    def send_response(self, message):
+        if self.deployed:
+            return
+        if isinstance(message, str):
+            message = {"log": message}
+        if "status" in message:
+            j = {
+                "action": "update[DOCKER_JOB]",
+                "data": {"id": self.docker_job.id, "workflow_state": message["status"]},
+            }
+            if self.tag is not None:
+                j["data"]["tag"] = self.tag
+            miranda.notify_gui(self.sctx, json.dumps(j))
+            self.docker_job.workflow_state = message["status"]
+            self.docker_job.update(self.sctx)
+        else:
+            if self.tag is not None:
+                if "data" not in message:
+                    message["data"] = {}
+                message["data"]["tag"] = self.tag
+            try:
+                miranda.notify_gui(self.sctx, json.dumps(message))
+            except Exception as e:
+                print("notify_gui failed: ", e)
+            # print ("|=> {}".format(message))
+
+    def close(self):
+        self.send_response({"status": "EXITED"})
+
 
 class MirandaDebugger(bdb.Bdb):
     def __init__(
@@ -824,6 +969,7 @@ execution_stack = []
 class _Execution_context(Execution_context_api):
     def __init__(
         self,
+        current_user,
         docker_job,
         ko,
         sc: miranda.Security_context,
@@ -838,7 +984,7 @@ class _Execution_context(Execution_context_api):
         global _the_global_context
         self.deployed = deployed
         self.debugger: MirandaDebugger = MirandaDebugger(
-            CommandActor(sc, docker_job, ko, deployed=deployed), self
+            CommandActorRabbitMQ(current_user, sc, docker_job, ko, deployed=deployed), self
         )
         self.reset(
             sc,
@@ -849,6 +995,7 @@ class _Execution_context(Execution_context_api):
             start_idx,
             execution_graph=execution_graph,
         )
+        self.current_user = current_user # If SC uses temp_token it doesn't contain the current_user so we have to store it here.
         self.breakpoints: dict = {}  # a dictionary of wobid -> list of line numbers
         self.init_breakpoints: dict = {}  # a list of breakpoints to use when an execution is starting
         self.debug_mode: bool = False
@@ -1232,6 +1379,7 @@ class _Execution_context(Execution_context_api):
         """
         # 1) Create a brand‐new context (new debugger, same SC)
         new_ctx = _Execution_context(
+            current_user=self.current_user,
             docker_job=self.docker_job,
             ko=self.knowledge_object,
             sc=self.security_context,
@@ -2442,7 +2590,7 @@ def create_execution_plan(NG, cached_wobs, code_cache):
     return all_plans
 
 
-def reload_graph(docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1):
+def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1):
     assert isinstance(target_wob_mid, int), (
         "ERROR: reload_graph: target_wob_mid must be an integer."
     )
@@ -2474,6 +2622,7 @@ def reload_graph(docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1
     except CodeCacheException as e:
         print("|=> ERROR: Failed to cache code blocks.")
         fake_execution_context = _Execution_context(
+            current_user,
             docker_job,
             ko,
             ko.sctx,
@@ -2507,6 +2656,7 @@ def reload_graph(docker_job, ko, run_as_deployed: bool, target_wob_mid: int = -1
 
     # START EXECUTION
     execution_context = _Execution_context(
+        current_user,
         docker_job,
         ko,
         ko.sctx,
@@ -2706,6 +2856,7 @@ async def enter_interactive_mode(
                         code_cache,
                         NG,
                     ) = reload_graph(
+                        current_user,
                         execution_context.get_docker_job(),
                         execution_context.get_knowledge_object(),
                         run_as_deployed,
@@ -2968,7 +3119,7 @@ def run_setup_code(
 
 
 async def process_knowledge_object(
-    sc, docker_job, ko: miranda.Knowledge_object, target_wob, message
+    current_user: str, sc: miranda.Security_context, docker_job, ko: miranda.Knowledge_object, target_wob, message:dict
 ):
     if isinstance(message["payload"], str):
         # print ("DEBUG payload = ", message["payload"])
@@ -2981,7 +3132,7 @@ async def process_knowledge_object(
     # read process context
     read_process_context_from_disk()
 
-    ca = CommandActor(sc, docker_job, ko)
+    ca = CommandActorRabbitMQ(current_user, sc, docker_job, ko)
     ca.commands = ALL_PROCESSOR_COMMANDS
     ca.ready_signal = "READY"
 
@@ -3020,7 +3171,7 @@ async def process_knowledge_object(
                 print("|=> Running setup code for the current graph.")
                 delete_process_context_keys_with_suffix(suffix="SETUP_COMPLETE")
                 execution_context, order_of_execution, cached_wobs, code_cache, NG = (
-                    reload_graph(docker_job, ko, False)
+                    reload_graph(current_user,docker_job, ko, False)
                 )
                 cmd = None
                 jaction = {"action": "run-setup", "data": {}}
@@ -3066,6 +3217,7 @@ async def process_knowledge_object(
     docker_job.workflow_state = "RUNNING"
     docker_job.update(sc)
     execution_context, order_of_execution, cached_wobs, code_cache, NG = reload_graph(
+        current_user,
         docker_job, ko, run_as_deployed, target_wob_mid=int(target_wob_mid)
     )
     execution_context.reload_graph = False
@@ -3086,6 +3238,7 @@ async def process_knowledge_object(
             inbound_message = execution_context.inbound_message
             execution_context, order_of_execution, cached_wobs, code_cache, NG = (
                 reload_graph(
+                    current_user,
                     docker_job,
                     execution_context.get_knowledge_object(),
                     run_as_deployed,
@@ -3125,7 +3278,7 @@ async def process_knowledge_object(
     ca.close()
 
 
-def process_message(sc, docker_job, src_ob, dest_ob, message={}, use_time_delta=True):
+def process_message(current_user, sc, docker_job, src_ob, dest_ob, message={}, use_time_delta=True):
     """
     Process a message from the wob message queue.
     Args:
@@ -3136,7 +3289,7 @@ def process_message(sc, docker_job, src_ob, dest_ob, message={}, use_time_delta=
     """
     # TODO fix this command pattern
     if isinstance(src_ob, miranda.Knowledge_object) and dest_ob is None:
-        asyncio.run(process_knowledge_object(sc, docker_job, src_ob, dest_ob, message))
+        asyncio.run(process_knowledge_object(current_user, sc, docker_job, src_ob, dest_ob, message))
     return message
 
 
@@ -3404,11 +3557,13 @@ if __name__ == "__main__":
         docker_job_id = os.getenv("DOCKER_JOB_ID")
         # logger.debug("Connecting with temp_token={}".format(temp_token))
         sc = miranda.create_security_context(temp_token=temp_token)
-
+        current_user = None
+        # Authenticate
         with sc.connect() as con:
             with con.cursor() as cur:
-                cur.execute("SELECT substring(CURRENT_MIRANDA_USER(),9)")
+                cur.execute('SELECT substring(CURRENT_MIRANDA_USER(),LENGTH("miranda_")+1)')
                 rs = cur.fetchall()
+                current_user = rs[0][0]
         assert message is not None, "WOB_MESSAGE environment variable not set."
         wob_id = message["wob_id"]
         wob_type = message["wob_type"]
@@ -3428,7 +3583,7 @@ if __name__ == "__main__":
 
         # Find inbound edges and create edge list
         print("|=> Version: {}".format(platform_versions.PLATFORM_VERSION))
-        process_message(sc, docker_job, ob, None, message)
+        process_message(current_user, sc, docker_job, ob, None, message)
 
     except SystemExit as e:
         # Exit code 200 is reserved for setup phase restarts.
