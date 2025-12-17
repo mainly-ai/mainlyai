@@ -574,11 +574,10 @@ class CommandActorRabbitMQ(CommandActorBase):
     def wait_for_event(self, sleep_time, debug_prompt=""):
         self.send_response({"status": self.ready_signal})
 
-        if not self.connection or self.connection.is_closed or not self.channel or not self.channel.is_open:
+        if not self.connection or self.connection.is_closed:
             self._connect()
         for method_frame, properties, body in self.channel.consume(self.queue_name, auto_ack=True):
             payload = body.decode()
-            # return [{wob_id, wob_type, payload, priority, write_ts, read_ts, target, user}]
             # self.connection.close()
             return [payload]
 
@@ -590,14 +589,12 @@ class CommandActorRabbitMQ(CommandActorBase):
             self.send_response({"status": "RUNNING"})
             return self.command
         self.send_response({"status": self.ready_signal})
-        rows = None
         self.clear_command_queue()
         print("|=> Waiting for debug command...")
-        sleep_time = Sleep_time(min=2, max=60 * 60 * 2, steps=20, exponential=True)
-        rows = self.wait_for_event(sleep_time)
+        event = self.wait_for_event(None)
         self.send_response({"status": "RUNNING"})
         # We get here only if we got a result set.
-        rs = json.loads(rows[0]["payload"])
+        rs = json.loads(event)
         self.tag = rs.get("tag", None)
         i = rs["command"]
         # print("|=> Received command: {}".format(i))
