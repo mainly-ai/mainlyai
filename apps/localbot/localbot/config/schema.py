@@ -6,6 +6,8 @@ config_schema = {
     "poll_interval": int,
     "skip_hw_check": bool,
     "db": {"host": str, "port": str, "database": str},
+    "rabbitmq_host": str,
+    "rabbitmq_port": int,
     "paths": {
         "logzod": str,
         "python_env": str,

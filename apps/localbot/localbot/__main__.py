@@ -3,7 +3,7 @@ import os
 
 from mirmod import miranda
 
-from .event_handler import NotifiedEventHandler, PolledEventHandler
+from .event_handler import NotifiedEventHandler, PolledEventHandler, RabbitMQEventHandler
 from . import resource_reporting, cli_args, config
 
 
@@ -71,15 +71,19 @@ def main():
     else:
         logging.info("Skipping hardware checks")
 
-    if cfg["poll_mode"]:
-        logging.info("Starting in poll mode")
-        current_event_handler = PolledEventHandler(cfg)
-        current_event_handler.run()
+    #if cfg["poll_mode"]:
+    #    logging.info("Starting in poll mode")
+    #    current_event_handler = PolledEventHandler(cfg)
+    #    current_event_handler.run()
+    #
+    #else:
+    #    logging.info("Starting in event mode")
+    #    current_event_handler = NotifiedEventHandler(cfg)
+    #    current_event_handler.run()
+    current_event_handler = RabbitMQEventHandler(cfg)
+    current_event_handler.run()
 
-    else:
-        logging.info("Starting in event mode")
-        current_event_handler = NotifiedEventHandler(cfg)
-        current_event_handler.run()
+
 
 
 if __name__ == "__main__":

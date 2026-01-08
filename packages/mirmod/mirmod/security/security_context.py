@@ -8,7 +8,6 @@ from hashlib import sha256
 from mirmod.utils import logger
 import uuid
 
-
 def get_config(system_path="", config_file_name="config.json", ignore_env=False):
     # TODO make singleton
     if not ignore_env and config_file_name == "config.json":
@@ -91,6 +90,8 @@ class Security_context:
         self.temp_token = temp_token
         self.last_renew = 0
         self.db_config = get_config(system_path)
+        self._current_miranda_user = None
+
         # The require_admin attribute is used to determine if a
         # a restricted SQL view is required to access data
         # or if SQL admin privileges can be assumed.
@@ -228,9 +229,21 @@ class Security_context:
     def whoami(self):
         return (self.application_user, self.database_user)
 
+    def current_miranda_user(self):
+        if self._current_miranda_user is not None:
+            return self._current_miranda_user
+        with self.connect() as con:
+            with con.cursor() as cur:
+                cur.execute('SELECT substring(CURRENT_MIRANDA_USER(),LENGTH("miranda_")+1)')
+                rs = cur.fetchall()
+                self._current_miranda_user = rs[0][0]
+        return self._current_miranda_user
+
+
     def close(self):
         if self.connection is not None:
             if self.connection.is_connected():
                 self.connection.close()
+                self._current_miranda_user = None
         # if self.pool is not None:
         #    self.pool.closeall()

@@ -539,16 +539,27 @@ class CommandActorRabbitMQ(CommandActorBase):
             self.rabbitmq_host, self.rabbitmq_port, "/", credentials
         )
         self.connection = pika.BlockingConnection(self.rabbitmq_parameters)
-        exchange_name = "DOCKER_JOB:{}".format(self.docker_job.metadata_id)
-        topic = "processor"
+        exchange_name = "processors"
 
         self.queue_name = (
-                    f"{exchange_name}.{topic}.{self.consumer_id}"
+                    f"DOCKER_JOB:{self.docker_job.metadata_id}.{self.consumer_id}"
                 )
         self.channel = self.connection.channel()
-        self.channel.exchange_declare(exchange=exchange_name, exchange_type="topic", durable=True)
-        self.channel.queue_declare(queue=self.queue_name, exclusive=False, durable=True, auto_delete=True)
-        self.channel.queue_bind(exchange=exchange_name, queue=self.queue_name, routing_key="processor")
+        self.channel.queue_declare(
+            queue=self.queue_name,
+            exclusive=False,
+            durable=True,
+            auto_delete=True,
+            arguments={
+                "x-expires": 7200000,  # 2 hours in ms
+                "x-message-ttl": 5000,  # 5 seconds in ms
+            },
+        )
+        self.channel.queue_bind(
+            exchange=exchange_name,
+            queue=self.queue_name,
+            routing_key=str(self.docker_job.metadata_id),
+        )
 
 
     def validate(self, command: str):
