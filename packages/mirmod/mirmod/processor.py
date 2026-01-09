@@ -2741,6 +2741,7 @@ async def reload_current_node(execution_context: _Execution_context):
 
 
 async def enter_interactive_mode(
+    current_user: str,
     execution_context: _Execution_context,
     order_of_execution,
     cached_wobs,
@@ -2758,7 +2759,7 @@ async def enter_interactive_mode(
         ca.ready_signal = "RESUMEREADY"
     if ca is None:
         docker_job = execution_context.get_docker_job()
-        ca = CommandActor(sc, docker_job, execution_context.knowledge_object)
+        ca = CommandActorRabbitMQ(current_user, sc, docker_job, execution_context.knowledge_object)
         if execution_context.caught_wob_error > -1:
             ca.ready_signal = "RESUMEREADY"
         else:
@@ -3199,11 +3200,11 @@ async def process_knowledge_object(
                 ca.send_response({"status": "READY"})
                 continue
             if cmd.startswith("terminal-"):
-                handle_terminal_cmd(ca, cmd, ko)
+                handle_terminal_cmd(current_user, ca, cmd, ko)
                 cmd = None
+                ca.ready_signal = "READY"
                 ca.send_response({"status": "READY"})
                 continue
-            # TODO add git-pull, git-push
             if cmd.startswith("stop"):
                 ca.close()
                 return
@@ -3273,6 +3274,7 @@ async def process_knowledge_object(
             execution_context.reload_graph = False
         if debug_mode and not run_as_deployed:
             stop_execution, execution_context = await enter_interactive_mode(
+                current_user,
                 execution_context,
                 order_of_execution,
                 cached_wobs,
@@ -3327,6 +3329,7 @@ def _read_terminal_output(master_fd, buffer, exit_event: threading.Event):
 
 
 def _terminal_output_poller(
+    current_user: str,
     ca: CommandActor, ko: miranda.Knowledge_object, exit_event: threading.Event
 ):
     """Polls terminal output and sends it to the client."""
@@ -3335,7 +3338,7 @@ def _terminal_output_poller(
     # which isn't thread safe.
     temp_token = os.getenv("WOB_TOKEN")
     thread_sctx = miranda.create_security_context(temp_token=temp_token)
-    thread_ca = CommandActor(thread_sctx, ca.docker_job, ko, ca.deployed)
+    thread_ca = CommandActorRabbitMQ(current_user, thread_sctx, ca.docker_job, ko, ca.deployed)
     thread_ca.trigger_run = True
     while not exit_event.is_set():
         terminal_server = _the_global_context.get("terminal_server")
@@ -3364,7 +3367,7 @@ def _terminal_output_poller(
             continue  # Timeout, just loop again
 
 
-def start_terminal_server(ca: CommandActor, ko: miranda.Knowledge_object):
+def start_terminal_server(current_user:str, ca: CommandActor, ko: miranda.Knowledge_object):
     """Starts a new terminal server subprocess if one isn't running."""
     global _the_global_context
     terminal_server = _the_global_context.get("terminal_server")
@@ -3390,34 +3393,34 @@ def start_terminal_server(ca: CommandActor, ko: miranda.Knowledge_object):
             shell = os.environ.get("SHELL", "/bin/bash")
             argv = [shell, "-i"]
             os.execv(shell, argv)
+        else:  # Parent process
+            output_buffer = queue.Queue(maxsize=1000)  # Store last 1000 lines
 
-        output_buffer = queue.Queue(maxsize=1000)  # Store last 1000 lines
+            exit_event = threading.Event()
 
-        exit_event = threading.Event()
+            # Start a thread to read output without blocking
+            reader_thread = threading.Thread(
+                target=_read_terminal_output,
+                args=(master_fd, output_buffer, exit_event),
+                daemon=True,
+            )
 
-        # Start a thread to read output without blocking
-        reader_thread = threading.Thread(
-            target=_read_terminal_output,
-            args=(master_fd, output_buffer, exit_event),
-            daemon=True,
-        )
+            # Start a thread to poll for output
+            poller_thread = threading.Thread(
+                target=_terminal_output_poller, args=(current_user, ca, ko, exit_event), daemon=True
+            )
 
-        # Start a thread to poll for output
-        poller_thread = threading.Thread(
-            target=_terminal_output_poller, args=(ca, ko, exit_event), daemon=True
-        )
-
-        _the_global_context["terminal_server"] = {
-            "exit_event": exit_event,
-            "pid": pid,
-            "master_fd": master_fd,
-            "output_buffer": output_buffer,
-            "reader_thread": reader_thread,
-            "poller_thread": poller_thread,
-        }
-        print(f"Terminal server started with PID: {pid}")
-        reader_thread.start()
-        poller_thread.start()
+            _the_global_context["terminal_server"] = {
+                "exit_event": exit_event,
+                "pid": pid,
+                "master_fd": master_fd,
+                "output_buffer": output_buffer,
+                "reader_thread": reader_thread,
+                "poller_thread": poller_thread,
+            }
+            print(f"Terminal server started with PID: {pid}")
+            reader_thread.start()
+            poller_thread.start()
 
     except Exception as e:
         print(f"ERROR: Failed to start terminal server: {e}")
@@ -3541,7 +3544,7 @@ def receive_from_terminal_server() -> list:
     return []
 
 
-def handle_terminal_cmd(ca: CommandActor, cmd: str, ko: miranda.Knowledge_object):
+def handle_terminal_cmd(current_user: str,ca: CommandActorBase, cmd: str, ko: miranda.Knowledge_object):
     c = cmd.strip()
     if " " in cmd:
         c, p = cmd.split(" ")
@@ -3553,7 +3556,7 @@ def handle_terminal_cmd(ca: CommandActor, cmd: str, ko: miranda.Knowledge_object
         # Create / or restart the process which listen to a unix pipe for shell commands to execute
         # and record the stdout / stderr messages in time order to a buffer awaiting collection.
         print("Starting the terminal server...")  # ko is not available here
-        start_terminal_server(ca, ko)
+        start_terminal_server(current_user, ca, ko)
         ca.send_response({"action": "TERMINAL_START", "data": "OK"})
     elif c == "terminal-stop":
         # Stop or kill the process created by start_terminal_server()
