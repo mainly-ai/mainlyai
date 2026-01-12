@@ -242,6 +242,17 @@ def start_runtime_thread(
                 logging.debug(
                     "Updated workflow state to EXITED for Docker_job %s", ob.id
                 )
+                miranda.send_realtime_message(
+                    req_sc,
+                    json.dumps(
+                        {
+                            "action": "update[DOCKER_JOB]",
+                            "data": {"workflow_state": "EXITED", "id": ob.id},
+                        }
+                    ),
+                    ticket=payload["rtmq_ticket"],
+                    ko_id=ko.id,
+                )
             except Exception as e:
                 logging.error("Failed to update workflow state to EXITED: %s", e)
             return
