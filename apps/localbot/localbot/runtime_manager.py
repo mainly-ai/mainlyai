@@ -147,6 +147,9 @@ def start_runtime_thread(
         "RUST_BACKTRACE": "1",
         "REALTIME_MESSAGE_TICKET": payload["rtmq_ticket"],
         "PYTHON_ENV_PATH": config["paths"]["python_env"],
+        "RABBITMQ_HOST": config["rabbitmq_host"],
+        "RABBITMQ_PORT": str(config["rabbitmq_port"]),
+        "RABBITMQ_CAFILE": config["rabbitmq_cafile"]
     }
     env_str = ""
     for k, v in env.items():

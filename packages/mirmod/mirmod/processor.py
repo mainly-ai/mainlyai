@@ -43,6 +43,7 @@ import threading, queue, pty, os
 from types import ModuleType
 import pika
 import random
+import ssl
 
 
 pickle.settings["recurse"] = True
@@ -526,6 +527,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         write_process_context_to_disk()
         self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
         self.rabbitmq_port = int(os.getenv("RABBITMQ_PORT", 5672))
+        self.rabbitmq_cafile= os.getenv("RABBITMQ_CAFILE", None)
         self.rabbitmq_user = current_user
         self.rabbitmq_pass = sc.temp_token
         self.consumer_id = os.getenv("CONSUMER_ID", random.randint(0, 999999))
@@ -535,15 +537,24 @@ class CommandActorRabbitMQ(CommandActorBase):
 
     def _connect(self):
         credentials = pika.PlainCredentials(self.rabbitmq_user, self.rabbitmq_pass)
+        context = ssl.create_default_context()
+        if self.rabbitmq_cafile:
+            context.load_verify_locations(cafile=self.rabbitmq_cafile)
+        ssl_options = pika.SSLOptions(context, self.rabbitmq_host)
+
         self.rabbitmq_parameters = pika.ConnectionParameters(
-            self.rabbitmq_host, self.rabbitmq_port, "/", credentials
+            self.rabbitmq_host,
+            self.rabbitmq_port,
+            "/",
+            credentials,
+            ssl_options=ssl_options,
         )
         self.connection = pika.BlockingConnection(self.rabbitmq_parameters)
         exchange_name = "processors"
 
         self.queue_name = (
-                    f"DOCKER_JOB:{self.docker_job.metadata_id}.{self.consumer_id}"
-                )
+            f"DOCKER_JOB:{self.docker_job.metadata_id}.{self.consumer_id}"
+        )
         self.channel = self.connection.channel()
         self.channel.queue_declare(
             queue=self.queue_name,
