@@ -63,11 +63,10 @@ def start_runtime_thread(
         logging.debug("Creating context directory: %s", context_path)
         os.makedirs(context_path, exist_ok=True)
     else:
-        logging.error(
-            "Context directory %s already exists, refusing to overwrite it. Ensure that all runtimes are properly stopped.",
+        logging.debug(
+            "Context directory %s already exists, ensure processors are stopped correctly.",
             context_path,
         )
-        return
 
     ko = miranda.Knowledge_object(req_sc, id=ko_id)
 
