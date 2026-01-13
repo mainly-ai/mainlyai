@@ -3,7 +3,11 @@ import os
 
 from mirmod import miranda
 
-from .event_handler import NotifiedEventHandler, PolledEventHandler, RabbitMQEventHandler
+from .event_handler import (
+    NotifiedEventHandler,
+    PolledEventHandler,
+    RabbitMQEventHandler,
+)
 from . import resource_reporting, cli_args, config
 
 
@@ -33,6 +37,12 @@ def main():
         cfg = config.write_config(
             {"auth_token": args.token, "crg_id": args.crg_id}, "localbot.yml"
         )
+
+    # ensure ca is downloaded
+    if os.path.exists(cfg["paths"]["ca"]):
+        logging.debug("Found local CA certificate")
+    else:
+        config.download_ca_cert(cfg)
 
     logging.debug(f"Using config: {cfg}")
 
@@ -71,19 +81,17 @@ def main():
     else:
         logging.info("Skipping hardware checks")
 
-    #if cfg["poll_mode"]:
+    # if cfg["poll_mode"]:
     #    logging.info("Starting in poll mode")
     #    current_event_handler = PolledEventHandler(cfg)
     #    current_event_handler.run()
     #
-    #else:
+    # else:
     #    logging.info("Starting in event mode")
     #    current_event_handler = NotifiedEventHandler(cfg)
     #    current_event_handler.run()
     current_event_handler = RabbitMQEventHandler(cfg)
     current_event_handler.run()
-
-
 
 
 if __name__ == "__main__":

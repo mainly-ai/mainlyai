@@ -63,15 +63,15 @@ class RabbitMQEventHandler:
         self.config = config
         self.crg = config["crg_id"]
         self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
-        self.rabbitmq_host = config.get("rabbitmq_host", "localhost")
-        self.rabbitmq_port = config.get("rabbitmq_port", 5672)
-        self.rabbitmq_cafile = config.get("rabbitmq_cafile", None)
-        self.rabbitmq_password = config.get("rabbitmq_password", self.auth_token)
-        self.rabbitmq_username = config.get(
-            "rabbitmq_username", self.sctx.current_miranda_user()
+        self.rabbitmq_host = config["rabbitmq"]["host"]
+        self.rabbitmq_port = config["rabbitmq"]["port"]
+        self.rabbitmq_cafile = config["paths"].get("ca", None)
+        self.rabbitmq_password = config["rabbitmq"].get("password", self.auth_token)
+        self.rabbitmq_username = config["rabbitmq"].get(
+            "username", self.sctx.current_miranda_user()
         )
         logging.info("Using RabbitMQ user:" + str(self.rabbitmq_username))
-        self.rabbitmq_vhost = config.get("rabbitmq_vhost", "/")
+        self.rabbitmq_vhost = config["rabbitmq"].get("vhost", "/")
         self.connection = None
         self.channel = None
         self._last_active_thread = None
@@ -176,7 +176,9 @@ class RabbitMQEventHandler:
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
-            workflow_id = int(payload["project_id"]) # NOTE: Inbound project_id is not a project but workflow
+            workflow_id = int(
+                payload["project_id"]
+            )  # NOTE: Inbound project_id is not a project but workflow
             ko = miranda.Knowledge_object(req_sc, id=workflow_id)
             logging.debug("Found project: %s", ko.__repr__("jdict"))
             if ko.id == -1:
@@ -189,7 +191,12 @@ class RabbitMQEventHandler:
                     logging.warning("Runtime already exists for project %s", ko.id)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
-                wob_message = { "id": -1, "wob_id": ko.id, "wob_type": "KNOWLEDGE_OBJECT", "payload": payload }
+                wob_message = {
+                    "id": -1,
+                    "wob_id": ko.id,
+                    "wob_type": "KNOWLEDGE_OBJECT",
+                    "payload": payload,
+                }
                 self.runtime_manager.create_runtime(req_sc, ko.id, wob_message, payload)
             elif payload["action"] == "destroy":
                 if self.runtime_manager.get_runtime(ko.id) is None:
@@ -218,7 +225,9 @@ class RabbitMQEventHandler:
                 self.connection = self._get_connection()
                 self.channel = self.connection.channel()
 
-                queue_name = f"{self.crg_ob.table_name.upper()}:{self.crg_ob.metadata_id}"
+                queue_name = (
+                    f"{self.crg_ob.table_name.upper()}:{self.crg_ob.metadata_id}"
+                )
                 logging.info("Consuming from RabbitMQ queue: %s", queue_name)
 
                 self.channel.queue_declare(queue=queue_name, durable=True)
@@ -228,8 +237,13 @@ class RabbitMQEventHandler:
                 )
 
                 self.channel.start_consuming()
-            except (pika.exceptions.AMQPConnectionError, pika.exceptions.StreamLostError) as e:
-                logging.warning(f"Connection to RabbitMQ lost: {e}. Reconnecting in 5s...")
+            except (
+                pika.exceptions.AMQPConnectionError,
+                pika.exceptions.StreamLostError,
+            ) as e:
+                logging.warning(
+                    f"Connection to RabbitMQ lost: {e}. Reconnecting in 5s..."
+                )
                 if self.connection and self.connection.is_open:
                     self.connection.close()
                 time.sleep(5)
@@ -255,6 +269,7 @@ class RabbitMQEventHandler:
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
         self.wait_for_event()
+
 
 class Sleep_time:
     def __init__(self, min=0, max=10, steps=10, exponential=False):

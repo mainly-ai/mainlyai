@@ -66,7 +66,7 @@ def download_logzod():
     asset_name = asset_map.get((system, machine))
     if asset_name is None:
         raise Exception(
-            f"Unsupported platform: {system} {machine}. "
+            f"Logzod - Unsupported platform: {system} {machine}. "
             "Supported platforms: Linux x86_64, macOS x86_64, macOS ARM64"
         )
 
@@ -88,31 +88,49 @@ def download_logzod():
     return logzod_path
 
 
+def download_ca_cert(cfg):
+    try:
+        logging.info(f"Downloading CA cert from {cfg['ca_source']}")
+        urllib.request.urlretrieve(cfg["ca_source"], cfg["paths"]["ca"])
+    except Exception as e:
+        raise Exception(f"Failed to download CA cert from {cfg['ca_source']}: {e}")
+
+
 def get_default_config():
     python_env = os.environ.get("PYTHON_ENV_PATH", os.environ.get("VIRTUAL_ENV", ""))
     python_bin = which("python3") if python_env == "" else "/bin/python3"
     logzod_bin = which("logzod")
+    ca_path = os.environ.get(
+        "MAINLY_CA_PATH", os.path.join(os.getcwd(), "mainly_ca.pem")
+    )
+
     if logzod_bin is None:
         try:
             logzod_bin = download_logzod()
         except Exception as e:
             raise Exception(f"logzod not found in PATH and failed to download: {e}")
     return {
-        "runtime_manager": "localbot.runtime_manager",
         "auth_token": "",
         "crg_id": 0,
         "poll_mode": False,
         "poll_interval": 10,
         "skip_hw_check": False,
+        "runtime_manager": "localbot.runtime_manager",
+        "ca_source": "https://ca.platform.mainly.ai/public.pem",
         "db": {
             "host": "instance-production-mysql1",
             "port": "3306",
             "database": "miranda",
         },
+        "rabbitmq": {
+            "host": "rabbitmq-0",
+            "port": "5672",
+        },
         "paths": {
             "logzod": logzod_bin,
             "python_env": python_env,
             "python": python_bin,
+            "ca": ca_path,
             "processor": "-m mirmod.processor",
             "contexts": "./contexts",
         },
