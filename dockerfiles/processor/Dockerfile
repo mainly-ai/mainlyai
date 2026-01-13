@@ -30,7 +30,8 @@ RUN uv pip install /miranda/dist/*.whl
 
 ARG CACHEBUST=1
 ARG LOGZOD_ARCH=x86_64
-RUN curl -L https://github.com/mainly-ai/logzod/releases/latest/download/logzod-linux-${LOGZOD_ARCH} -o /usr/local/bin/logzod
+RUN --mount=type=cache,target=/tmp/cachebust,id=cachebust-${CACHEBUST} \
+    curl -L https://github.com/mainly-ai/logzod/releases/latest/download/logzod-linux-${LOGZOD_ARCH} -o /usr/local/bin/logzod
 RUN chmod +x /usr/local/bin/logzod
 
 # # Create a non-root user
