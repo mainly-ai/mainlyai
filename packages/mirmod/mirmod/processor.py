@@ -32,6 +32,7 @@ import os
 from mirmod.utils.logger import logger
 import importlib.util
 import re
+import shutil
 import subprocess
 from datetime import datetime
 import copy
@@ -3024,17 +3025,39 @@ def install_all_requirements(execution_context):
         print("|=> Installing requirements:")
         print("\n".join(lines))
 
-        # Get the Python environment path from environment variables
-        python_env_path = os.getenv("PYTHON_ENV_PATH")
-        use_uv = miranda.is_uv_venv()
+        # Find the pip installer to use, preferring 'uv'
+        pip_path = None
 
-        # Use the specified Python environment if it exists
-        if use_uv:
-            pip_path = ["uv", "pip"]
-        elif python_env_path:
-            pip_path = [os.path.join(python_env_path, "bin", "pip")]
+        # First, search for 'uv' in common user-specific locations as shutil.which might fail.
+        uv_path = None
+        common_uv_paths = [
+            "~/.local/bin/uv",
+            "~/.cargo/bin/uv",
+            "/opt/homebrew/bin/uv",
+            "/usr/local/bin/uv",
+            "/bin/uv",
+            "/usr/bin/uv"
+        ]
+        for path in common_uv_paths:
+            expanded_path = os.path.expanduser(path)
+            if os.path.isfile(expanded_path) and os.access(expanded_path, os.X_OK):
+                uv_path = expanded_path
+                print(f"|=> Found 'uv' at: {uv_path}")
+                break
+
+        # If not found in common paths, fall back to shutil.which
+        if not uv_path:
+            uv_path = shutil.which("uv")
+
+        pip_path_exec = shutil.which("pip")
+
+        if uv_path:
+            pip_path = [uv_path, "pip"]
+        elif pip_path_exec:
+            pip_path = [pip_path_exec]
         else:
-            pip_path = ["pip"]
+            print("|=> ERROR: Could not find 'uv' or 'pip' in your PATH or common locations.")
+            return
 
         # Execute pip install command
         try:
