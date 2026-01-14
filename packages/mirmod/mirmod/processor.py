@@ -528,6 +528,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
         self.rabbitmq_port = int(os.getenv("RABBITMQ_PORT", 5672))
         self.rabbitmq_cafile= os.getenv("RABBITMQ_CAFILE", None)
+        self.rabbitmq_tls_altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
         self.rabbitmq_user = current_user
         self.rabbitmq_pass = sc.temp_token
         self.consumer_id = os.getenv("CONSUMER_ID", random.randint(0, 999999))
@@ -540,7 +541,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         context = ssl.create_default_context()
         if self.rabbitmq_cafile:
             context.load_verify_locations(cafile=self.rabbitmq_cafile)
-        ssl_options = pika.SSLOptions(context, self.rabbitmq_host)
+        ssl_options = pika.SSLOptions(context, self.rabbitmq_tls_altname or self.rabbitmq_host)
 
         self.rabbitmq_parameters = pika.ConnectionParameters(
             self.rabbitmq_host,
