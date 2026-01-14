@@ -64,6 +64,7 @@ class RabbitMQEventHandler:
         self.crg = config["crg_id"]
         self.crg_ob = miranda.Compute_resource_group(self.sctx, id=config["crg_id"])
         self.rabbitmq_host = config["rabbitmq"]["host"]
+        self.rabbitmq_tls_altname = config["rabbitmq"].get("tls_altname", None)
         self.rabbitmq_port = config["rabbitmq"]["port"]
         self.rabbitmq_cafile = config["paths"].get("ca", None)
         self.rabbitmq_password = config["rabbitmq"].get("password", self.auth_token)
@@ -111,7 +112,9 @@ class RabbitMQEventHandler:
             try:
                 context = ssl.create_default_context(cafile=self.rabbitmq_cafile)
                 context.load_verify_locations(cafile=self.rabbitmq_cafile)
-                ssl_options = pika.SSLOptions(context, self.rabbitmq_host)
+                ssl_options = pika.SSLOptions(
+                    context, self.rabbitmq_tls_altname or self.rabbitmq_host
+                )
                 ssl_parameters = pika.ConnectionParameters(
                     ssl_options=ssl_options, **parameters_kwargs
                 )

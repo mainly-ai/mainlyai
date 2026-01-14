@@ -150,6 +150,9 @@ def start_runtime_thread(
         "RABBITMQ_PORT": str(config["rabbitmq"]["port"]),
         "RABBITMQ_CAFILE": config["paths"]["ca"],
     }
+    if "tls_altname" in config["rabbitmq"]:
+        env["RABBITMQ_TLS_ALTNAME"] = config["rabbitmq"]["tls_altname"]
+
     env_str = ""
     for k, v in env.items():
         env_str += f"{k}={shlex.quote(v)} "
