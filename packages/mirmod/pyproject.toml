@@ -23,7 +23,8 @@ dependencies = [
     "ipython",
     "lxml",
     "niquests",
-    "nest_asyncio"
+    "nest_asyncio",
+    "aio-pika"
 ]
 
 [dependency-groups]
