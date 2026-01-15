@@ -532,6 +532,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         self.rabbitmq_tls_altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
         self.rabbitmq_user = current_user
         self.rabbitmq_pass = sc.temp_token
+        self.last_interaction_time = time.time()
         self.consumer_id = os.getenv("CONSUMER_ID", random.randint(0, 999999))
         self.connection = None
         self.channel = None
@@ -598,12 +599,35 @@ class CommandActorRabbitMQ(CommandActorBase):
     def wait_for_event(self, sleep_time, debug_prompt=""):
         self.send_response({"status": self.ready_signal})
 
-        if not self.connection or self.connection.is_closed:
-            self._connect()
-        for method_frame, properties, body in self.channel.consume(self.queue_name, auto_ack=True):
-            payload = body.decode()
-            # self.connection.close()
-            return payload
+        while True:
+            try:
+                if not self.connection or self.connection.is_closed:
+                    self._connect()
+                for method_frame, properties, body in self.channel.consume(
+                    self.queue_name, auto_ack=True
+                ):
+                    payload = body.decode()
+                    self.last_interaction_time = time.time()
+                    return payload
+            except pika.exceptions.AMQPConnectionError as e:
+                logger.warning(f"Connection issue: {e}")
+                if time.time() - self.last_interaction_time < 60*60:
+                    logger.info("Reconnecting...")
+                    self._connect()
+                    continue
+                else:
+                    logger.error("No interaction for more than 1 hour. Exiting.")
+                    try:
+                        self.send_response(
+                            {"status": "EXITED", "reason": "No interaction for > 1hr"}
+                        )
+                    except Exception as send_e:
+                        logger.error(f"Failed to send EXIT signal: {send_e}")
+                    self.sctx.close()
+                    sys.exit(0)
+            except Exception as e:
+                logger.error(f"An unexpected error occurred in wait_for_event: {e}")
+                raise
 
     def input(self, prompt):
         """Get a debug command from the message queue."""

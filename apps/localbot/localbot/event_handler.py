@@ -249,7 +249,7 @@ class RabbitMQEventHandler:
                 )
                 if self.connection and self.connection.is_open:
                     self.connection.close()
-                time.sleep(5)
+                time.sleep(2)
             except KeyboardInterrupt:
                 logging.info("Interrupted by user.")
                 break
