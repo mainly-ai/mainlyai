@@ -272,6 +272,9 @@ class CommandActorBase:
     def send_response(self, response):
         assert False, "Not implemented"
 
+    def get_docker_job(self):
+        return None
+
 
 class MirandaDebuggerStopException(Exception):
     pass
@@ -293,6 +296,10 @@ class CommandActorDbg(CommandActorBase):
             "stop": "Stop execution",
         }
         self.command = None
+        self.docker_job= docker_job
+
+    def get_docker_job(self):
+        return self.docker_job
 
     def validate(self, command: str):
         command = command.strip()
@@ -354,6 +361,9 @@ class CommandActor(CommandActorBase):
             del _the_global_context["process_context"][k]
         write_process_context_to_disk()
 
+    def get_docker_job(self):
+        return self.docker_job
+
     def validate(self, command: str):
         command = command.strip()
         if " " in command:
@@ -383,7 +393,7 @@ class CommandActor(CommandActorBase):
             for result in cur.stored_results():
                 _ = result.fetchall()
 
-    def wait_for_event(self, sleep_time, debug_prompt=""):
+    def wait_for_event(self, sleep_time=None, debug_prompt=""):
         wake_up_counter = 0
         rows = []
         while True:
@@ -538,6 +548,9 @@ class CommandActorRabbitMQ(CommandActorBase):
         self.channel = None
         self._connect()
 
+    def get_docker_job(self):
+        return self.docker_job
+
     def _connect(self):
         credentials = pika.PlainCredentials(self.rabbitmq_user, self.rabbitmq_pass)
         context = ssl.create_default_context()
@@ -565,7 +578,7 @@ class CommandActorRabbitMQ(CommandActorBase):
             durable=True,
             auto_delete=True,
             arguments={
-                "x-expires": 7200000,  # 2 hours in ms
+                "x-expires": 2*7200000,  # 4 hours in ms
                 "x-message-ttl": 5000,  # 5 seconds in ms
             },
         )
@@ -596,7 +609,7 @@ class CommandActorRabbitMQ(CommandActorBase):
     def clear_command_queue(self):
         pass
 
-    def wait_for_event(self, sleep_time, debug_prompt=""):
+    def wait_for_event(self, sleep_time=None, debug_prompt=""):
         self.send_response({"status": self.ready_signal})
 
         while True:
@@ -2403,6 +2416,7 @@ class Ask_for_password:
         self.sc = sc
         self.ca = ca
         self.ko = ko
+        self.docker_job_id = ca.get_docker_job().id
         self.prompt = prompt
 
     def __call__(self, prompt: str = None):
@@ -2420,15 +2434,15 @@ class Ask_for_password:
         # The temporary password is then deleted from the secret store.
         jaction = {
             "action": "ask_for_password",
-            "data": {"project_id": self.ko.id, "passwd_prompt": self.prompt},
+            "data": {"project_id": self.ko.id, "docker_job_id": self.docker_job_id, "passwd_prompt": self.prompt},
         }
         self.ca.send_response(jaction)
-        sleep_time = Sleep_time(min=2, max=60 * 60 * 2, steps=20, exponential=True)
         for i in range(0, 10):
-            rows = self.ca.wait_for_event(sleep_time, debug_prompt="Ask_for_password")
-            payload = json.loads(rows[0]["payload"])
+            rs = self.ca.wait_for_event()
+            payload = json.loads(rs)
             if "command" not in payload:
                 # ignore messages without a command
+                print ("|=> ERROR: Bad response for ask_for_password: ",payload)
                 continue
             command = payload["command"]
             data = ""
@@ -2464,7 +2478,7 @@ def git_soft_pull(sc, ko, ca, command: str, push=False):
             sc,
             ko,
             wob,
-            ask_for_password=Ask_for_password(sc, ca, ko, "SSH key password"),
+            ask_for_password=Ask_for_password(sc, ca, ko, prompt="SSH key password"),
             soft=True,
             push=push,
         )
@@ -3397,7 +3411,7 @@ def _terminal_output_poller(
     # which isn't thread safe.
     temp_token = os.getenv("WOB_TOKEN")
     thread_sctx = miranda.create_security_context(temp_token=temp_token)
-    thread_ca = CommandActorRabbitMQ(current_user, thread_sctx, ca.docker_job, ko, ca.deployed)
+    thread_ca = CommandActorRabbitMQ(current_user, thread_sctx, ca.get_docker_job(), ko, ca.deployed)
     thread_ca.trigger_run = True
     while not exit_event.is_set():
         terminal_server = _the_global_context.get("terminal_server")
@@ -3680,3 +3694,4 @@ if __name__ == "__main__":
         print(f.read())
 
     write_process_context_to_disk()
+    sys.exit(0)
