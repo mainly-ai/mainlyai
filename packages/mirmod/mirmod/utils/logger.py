@@ -27,12 +27,15 @@ class Logger:
 
         # Create file handler for logging to a file
         log_filename = os.getenv("MIRANDA_LOGFILE", default=LOCAL_LOG)
-        file_handler = logging.FileHandler(log_filename)
-        file_handler.setFormatter(logging.Formatter(log_format))
+        file_handler = None
+        try:
+            file_handler = logging.FileHandler(log_filename)
+            file_handler.setFormatter(logging.Formatter(log_format))
+            logger.addHandler(file_handler)
+        except Exception as e:
+            print ("|=> WARNING: ",e)
 
-        # Add both handlers to the logger
         logger.addHandler(stdout_handler)
-        logger.addHandler(file_handler)
 
         return logger
 
