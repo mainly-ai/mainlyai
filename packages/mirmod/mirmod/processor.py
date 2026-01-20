@@ -72,8 +72,11 @@ E_SKIP_NODE = 2  # node was already executed. Move to next.
 
 def write_process_context_to_disk():
     global _the_global_context
-    with open("process_context.pickle", "wb") as file:
-        pickle.dump(_the_global_context["process_context"], file)
+    try:
+        with open("process_context.pickle", "wb") as file:
+            pickle.dump(_the_global_context["process_context"], file)
+    except Exception as e:
+        print(f"|=> WARNING: The process context could not be written: {e}")
 
 
 def read_process_context_from_disk():
@@ -84,7 +87,7 @@ def read_process_context_from_disk():
     except FileNotFoundError:
         print("|=> No process context exists yet.")
     except Exception as e:
-        print(f"|=> The process context could not be read: {e}")
+        print(f"|=> WARNING: The process context could not be read: {e}")
 
 
 def delete_process_context_keys_with_suffix(suffix: str):
@@ -2637,20 +2640,22 @@ def create_execution_plan(NG, cached_wobs, code_cache):
 
     # order_of_execution.reverse()
     print("|=> Execution plan")
+    info = ""
     for i, s in enumerate(all_plans):
-        print(i, s)
+        info += "|=> {} {}\n".format(i, s)
         dispatches = s.get_dispatches()
         # if s.is_part_of_field != None:
         #  for j,init_n in enumerate(s.is_part_of_field["-"].init_nodes):
         #    print ("    ",j,s.is_part_of_field["-"].init_nodes)
         if dispatches is not None:
             for d in dispatches:
-                print(d["dispatch"], "----")
+                info += "\n|=> {} {}".format(d["dispatch"], "----")
                 for di, ds in enumerate(d["plan"]):
-                    print("  ", di, ds)
+                    info += "\n|=>    {} {}".format(di, ds)
                     # if ds.is_part_of_field != None:
                     #  for j,init_n in enumerate(ds.is_part_of_field["-"].init_nodes):
                     #    print ("    ",j,ds.is_part_of_field["-"].init_nodes)
+    print (info)
     return all_plans
 
 
@@ -3099,11 +3104,23 @@ def install_all_requirements(execution_context):
 
         # Execute pip install command
         try:
-            subprocess.check_call(
-                pip_path + ["install", "-r", "project_requirements.txt"]
+            result = subprocess.run(
+                pip_path + ["install", "-r", "project_requirements.txt"],
+                check=True,
+                capture_output=True,
+                text=True,
             )
+            if result.stdout:
+                print(result.stdout)
+            if result.stderr:
+                print("--- stderr ---")
+                print(result.stderr)
         except subprocess.CalledProcessError as e:
             print("|=> Pip install failed: ", e)
+            print("--- stdout ---")
+            print(e.stdout)
+            print("--- stderr ---")
+            print(e.stderr)
             return
 
 
