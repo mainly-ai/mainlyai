@@ -8,7 +8,7 @@ from hashlib import sha256
 from mirmod.utils import logger
 import uuid
 
-def get_config(system_path="", config_file_name="config.json", ignore_env=False):
+def get_config(system_path=None, config_file_name="config.json", ignore_env=False):
     # TODO make singleton
     if not ignore_env and config_file_name == "config.json":
         if "MIRANDA_CONFIG_JSON" in os.environ:
@@ -26,7 +26,10 @@ def get_config(system_path="", config_file_name="config.json", ignore_env=False)
                 pass
 
     path = ""
-    paths = [Path("/etc/miranda"), system_path, Path.home(), Path("/miranda")]
+    paths = [Path("/etc/miranda"), Path.home(), Path("/miranda")]
+    if system_path is None or system_path == "":
+        paths = [Path(system_path)] + paths
+
     for p in paths:
         try:
             path = p

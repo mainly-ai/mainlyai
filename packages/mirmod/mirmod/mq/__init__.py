@@ -37,47 +37,50 @@ async def register_code_exchange(ecx):
 
 
 async def register_queue(ecx, name=None):
-  metadata_id = ecx.get_current_wob_metadata_id()
-  consumer_id = str(random.randint(0, 1_000_000))
-  exchange = "nodes"
-  topic = str(metadata_id)
-  queue_name = name or f"CODE:{metadata_id}.{consumer_id}"
+    metadata_id = ecx.get_current_wob_metadata_id()
+    consumer_id = str(random.randint(0, 1_000_000))
+    exchange = "nodes"
+    topic = str(metadata_id)
+    queue_name = name or f"CODE:{metadata_id}.{consumer_id}"
 
-  host = os.environ.get("RABBITMQ_HOST", "localhost")
-  port = int(os.environ.get("RABBITMQ_PORT", 5672))
-  user = ecx.current_user
-  password = ecx.get_security_context().temp_token
-  ca_file = os.environ.get("RABBITMQ_CAFILE")
-  altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
+    host = os.environ.get("RABBITMQ_HOST", "localhost")
+    altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
+    port = int(os.environ.get("RABBITMQ_PORT", 5672))
+    user = ecx.current_user
+    password = ecx.get_security_context().temp_token
+    ca_file = os.environ.get("RABBITMQ_CAFILE")
+    ssl_context = None
+    if ca_file:
+        ssl_context = ssl.create_default_context(cafile=ca_file)
+        ssl_context.check_hostname = True
 
-  ssl_context = None
-  if ca_file:
-      ssl_context = ssl.create_default_context(cafile=ca_file)
-      ssl_context.check_hostname = True
-      ssl_context.server_hostname = altname or host
+    config_params = {
+        "host":host,
+        "port":port,
+        "login":user,
+        "password":password,
+        "virtualhost":"/",
+        "ssl":ca_file is not None,
+        "ssl_context":ssl_context,
+    }
+    if altname:
+        config_params["server_hostname"] = altname
+    connection = await aio_pika.connect_robust(
+       **config_params
+    )
 
-  connection = await aio_pika.connect_robust(
-      host=host,
-      port=port,
-      login=user,
-      password=password,
-      virtualhost="/",
-      ssl=ca_file is not None,
-      ssl_context=ssl_context
-  )
+    channel = await connection.channel()
+    queue = await channel.declare_queue(queue_name, exclusive=True, auto_delete=True)
+    await queue.bind(exchange, routing_key=topic)
 
-  channel = await connection.channel()
-  queue = await channel.declare_queue(queue_name, exclusive=True, auto_delete=True)
-  await queue.bind(exchange, routing_key=topic)
-
-  return QueueHandler(
-      queue_name=queue_name,
-      topic=topic,
-      channel=channel,
-      connection=connection,
-      exchange_name=exchange,
-      queue=queue
-  )
+    return QueueHandler(
+        queue_name=queue_name,
+        topic=topic,
+        channel=channel,
+        connection=connection,
+        exchange_name=exchange,
+        queue=queue
+    )
 
 class QueueHandler:
   def __init__(self, queue_name, topic, channel, connection, exchange_name, queue):
