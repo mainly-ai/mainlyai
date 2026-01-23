@@ -1,6 +1,6 @@
 [project]
 name = "mirmod"
-version = "5.4.1"
+version = "5.4.2"
 description = ""
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -24,7 +24,8 @@ dependencies = [
     "lxml",
     "niquests",
     "nest_asyncio",
-    "aio-pika"
+    "aio-pika",
+    "pika"
 ]
 
 [dependency-groups]
