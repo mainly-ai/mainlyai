@@ -6,34 +6,37 @@ import aio_pika
 import ssl
 
 async def register_code_exchange(ecx):
-  exchange = "nodes"
-  
-  host = os.environ.get("RABBITMQ_HOST", "localhost")
-  altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
-  port = int(os.environ.get("RABBITMQ_PORT", 5672))
-  user = ecx.current_user
-  password = ecx.get_security_context().temp_token
-  ca_file = os.environ.get("RABBITMQ_CAFILE")
+    exchange = "nodes"
 
-  ssl_context = None
-  if ca_file:
-      ssl_context = ssl.create_default_context(cafile=ca_file)
-      ssl_context.check_hostname = True
-      ssl_context.server_hostname = altname or host
+    host = os.environ.get("RABBITMQ_HOST", "localhost")
+    altname = os.getenv("RABBITMQ_TLS_ALTNAME", None)
+    port = int(os.environ.get("RABBITMQ_PORT", 5672))
+    user = ecx.current_user
+    password = ecx.get_security_context().temp_token
+    ca_file = os.environ.get("RABBITMQ_CAFILE")
 
-  connection = await aio_pika.connect_robust(
-      host=host,
-      port=port,
-      login=user,
-      password=password,
-      virtualhost="/",
-      ssl=ca_file is not None,
-      ssl_context=ssl_context
-  )
+    ssl_context = None
+    if ca_file:
+        ssl_context = ssl.create_default_context(cafile=ca_file)
+        ssl_context.check_hostname = False
 
-  async with connection:
-      channel = await connection.channel()
-      await channel.declare_exchange(exchange, aio_pika.ExchangeType.TOPIC, durable=True)
+    config_params = {
+        "host":host,
+        "port":port,
+        "login":user,
+        "password":password,
+        "virtualhost":"/",
+        "ssl":ca_file is not None,
+        "ssl_context":ssl_context,
+    }
+    if altname:
+        config_params["server_hostname"] = altname
+    connection = await aio_pika.connect_robust(
+        **config_params
+    )
+    async with connection:
+        channel = await connection.channel()
+        await channel.declare_exchange(exchange, aio_pika.ExchangeType.TOPIC, durable=True)
 
 
 async def register_queue(ecx, name=None):
@@ -52,7 +55,8 @@ async def register_queue(ecx, name=None):
     ssl_context = None
     if ca_file:
         ssl_context = ssl.create_default_context(cafile=ca_file)
-        ssl_context.check_hostname = True
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
 
     config_params = {
         "host":host,
