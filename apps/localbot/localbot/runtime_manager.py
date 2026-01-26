@@ -172,7 +172,7 @@ def start_runtime_thread(
         env=env,
         cwd=context_path,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stderr=subprocess.PIPE,
     )
 
     # event to signal when process completes
@@ -182,9 +182,32 @@ def start_runtime_thread(
     def wait_for_process():
         """Thread function to wait for process completion"""
         try:
-            stdout, stderr = process.communicate()
+            stdout_lines = []
+            stderr_lines = []
+
+            def read_stdout():
+                for line in process.stdout:
+                    line = line.rstrip("\n")
+                    logging.debug(f"[{ko_id}:stdout] {line}")
+                    stdout_lines.append(line)
+
+            def read_stderr():
+                for line in process.stderr:
+                    line = line.rstrip("\n")
+                    logging.debug(f"[{ko_id}:stderr] {line}")
+                    stderr_lines.append(line)
+
+            stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+            stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+            stdout_thread.start()
+            stderr_thread.start()
+            stdout_thread.join()
+            stderr_thread.join()
+
+            process.wait()
             process_result["returncode"] = process.returncode
-            process_result["stdout"] = stdout
+            process_result["stdout"] = "\n".join(stdout_lines)
+            process_result["stderr"] = "\n".join(stderr_lines)
         except Exception as e:
             process_result["error"] = e
         finally:
