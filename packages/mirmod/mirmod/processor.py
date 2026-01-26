@@ -3025,13 +3025,14 @@ async def enter_interactive_mode(
         )  # -1 because lineno is 1-indexed
         return False, execution_context
     elif cmd.startswith("stop"):
-        if execution_context.caught_wob_error > -1:
-            execution_context.caught_wob_error = -1
-            execution_context.reset(sc)
-            ca.ready_signal = "READY"
-            ca.send_response({"status": "READY"})
-        else:
-            execution_context.debug_mode = False
+        # NOTE Stop means stop.
+        #if execution_context.caught_wob_error > -1:
+        #    execution_context.caught_wob_error = -1
+        #    execution_context.reset(sc)
+        #    ca.ready_signal = "READY"
+        #    ca.send_response({"status": "READY"})
+        #else:
+        execution_context.debug_mode = False
         return True, execution_context  # Quit interactive mode
     elif i.startswith("compile"):
         validate_code_block(execution_context.get_security_context(), ca, i)
