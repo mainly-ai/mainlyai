@@ -207,6 +207,17 @@ class RabbitMQEventHandler:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
                 self.runtime_manager.destroy_runtime(ko.id)
+            elif payload["action"] == "build":
+                # only some runtime managers support image building,
+                # such as the kubernetes runtime manager.
+                if "build_image" in dir(self.runtime_manager) and callable(
+                    self.runtime_manager.build_image
+                ):
+                    self.runtime_manager.build_image(req_sc, ko.id, payload)
+                else:
+                    logging.warning(
+                        "Selected runtime manager does not support image building"
+                    )
             else:
                 logging.warning("Unknown action: %s", payload["action"])
 
