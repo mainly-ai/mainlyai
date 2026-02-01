@@ -8,6 +8,7 @@ from hashlib import sha256
 from mirmod.utils import logger
 import uuid
 
+
 def get_config(system_path=None, config_file_name="config.json", ignore_env=False):
     # TODO make singleton
     if not ignore_env and config_file_name == "config.json":
@@ -27,7 +28,7 @@ def get_config(system_path=None, config_file_name="config.json", ignore_env=Fals
 
     path = ""
     paths = [Path("/etc/miranda"), Path.home(), Path("/miranda")]
-    if system_path is None or system_path == "":
+    if system_path is not None and system_path != "":
         paths = [Path(system_path)] + paths
 
     for p in paths:
@@ -237,11 +238,12 @@ class Security_context:
             return self._current_miranda_user
         with self.connect() as con:
             with con.cursor() as cur:
-                cur.execute('SELECT substring(CURRENT_MIRANDA_USER(),LENGTH("miranda_")+1)')
+                cur.execute(
+                    'SELECT substring(CURRENT_MIRANDA_USER(),LENGTH("miranda_")+1)'
+                )
                 rs = cur.fetchall()
                 self._current_miranda_user = rs[0][0]
         return self._current_miranda_user
-
 
     def close(self):
         if self.connection is not None:
