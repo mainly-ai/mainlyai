@@ -1,5 +1,7 @@
 # Mainly.AI
 
+![Mainly.AI Platform](.github/assets/platform.webp)
+
 Mainly.AI is a graph-first AI development platform that enables real-time collaboration on structured, modular AI workflows. Build full-stack applications using node-based visual programming, where nodes represent functions, services, and integrations.
 
 ## Key Features
