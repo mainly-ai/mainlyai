@@ -116,7 +116,7 @@ def get_default_config():
         "poll_interval": 10,
         "skip_hw_check": False,
         "runtime_manager": "localbot.runtime_manager",
-        "ca_source": "https://ca.platform.mainly.ai/public.pem",
+        "ca_source": "https://ca.production.mainly.ai/public.pem",
         "db": {
             "host": "instance-production-mysql1",
             "port": "3306",
