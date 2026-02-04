@@ -1,6 +1,6 @@
 import logging
 import os
-
+import json
 from mirmod import miranda
 
 from .event_handler import (
@@ -35,7 +35,8 @@ def main():
             return
 
         cfg = config.write_config(
-            {"auth_token": args.token, "crg_id": args.crg_id}, "localbot.yml"
+            {"auth_token": args.token, "crg_id": args.crg_id},
+            os.path.join(os.getcwd(), "localbot.yml"),
         )
 
     # ensure ca is downloaded
@@ -47,6 +48,22 @@ def main():
     logging.debug(f"Using config: {cfg}")
 
     logging.debug("Testing sctx")
+    # Security context needs config.json correctly installed. Let's create a mock config.json in CWD
+    # if none exist already.
+    if not os.path.exists(os.path.join(os.getcwd(), "config.json")):
+        with open(os.path.join(os.getcwd(), "config.json"), "w") as f:
+            f.write(json.dumps(
+                {
+                "user": "",
+                "database": "miranda",
+                "host":"intance-development-mysql1",
+                "port":"3306",
+                "password": ""
+                }, indent=4
+                ))
+        logging.debug("Wrote config.json in current directory {}".format(os.path.join(os.getcwd(), "config.json")))
+    else:
+        logging.debug("Found {}".format(os.path.join(os.getcwd(), "config.json")))
     sctx = miranda.create_security_context(temp_token=cfg["auth_token"])
     try:
         with sctx.connect() as _:
