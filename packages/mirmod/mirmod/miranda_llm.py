@@ -356,7 +356,7 @@ class ArgotModelProvider:
         stream=False,
         throttle=None,
         tools=None,
-        api_url="https://argot.p.mainly.cloud/{}/chat",
+        api_url="https://argot.production.mainly.ai/{}/chat",
     ):
         if self.use_async:
             self.sess = niquests.AsyncSession()
