@@ -8,7 +8,6 @@ from hashlib import sha256
 from mirmod.utils import logger
 import uuid
 
-
 def get_config(system_path=None, config_file_name="config.json", ignore_env=False):
     # TODO make singleton
     if not ignore_env and config_file_name == "config.json":
@@ -26,10 +25,27 @@ def get_config(system_path=None, config_file_name="config.json", ignore_env=Fals
                 logger.error(e)
                 pass
 
-    path = ""
-    paths = [Path("/etc/miranda"), Path.home(), Path("/miranda")]
-    if system_path is not None and system_path != "":
-        paths = [Path(system_path)] + paths
+    paths = [Path.cwd(), Path("/etc/miranda"), Path.home(), Path("/miranda")]
+    if system_path:
+        paths.insert(0, Path(system_path))
+
+    for p in paths:
+        try:
+            path = p
+            config_file = open(os.path.join(p, config_file_name))
+            config = json.load(config_file)
+            config_file.close()
+            return config
+        except FileNotFoundError:
+            logger.debug(
+                f'Tried to find config file "{config_file_name}" in location "{path}" and failed.'
+            )
+            pass
+    logger.error(
+        f"Can't find the Miranda configuration file {config_file_name} which should reside in one of the following directories: {paths}"
+    )
+    logger.error(f"For more information see get_config() in {__file__}")
+    exit(-1)
 
     for p in paths:
         try:
