@@ -56,7 +56,7 @@ def main():
                 {
                 "user": "",
                 "database": "miranda",
-                "host":"intance-development-mysql1",
+                "host":"instance-production-mysql1",
                 "port":"3306",
                 "password": ""
                 }, indent=4
