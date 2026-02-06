@@ -707,7 +707,7 @@ class ArgotConfiguredModel:
 
         url = self._api_url.format(self._provider)
 
-        print(data)
+        # print(data)
 
         r = self._sess.post(url, data=json.dumps(data))
         r.raise_for_status()
