@@ -2876,7 +2876,7 @@ async def enter_interactive_mode(
         # )
         run_setup_for_all_code(execution_context)
     elif cmd.startswith("terminal-"):
-        handle_terminal_cmd(ca, cmd, ko)
+        handle_terminal_cmd(current_user, ca, cmd, ko)
     elif (
         cmd.startswith("start")
         or cmd.startswith("restart")
