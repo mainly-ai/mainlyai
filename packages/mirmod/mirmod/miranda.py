@@ -652,6 +652,8 @@ def find_objects_by_metadata_ids(
     """
     con = sc.connect()
     rs = []
+    if len(ids) == 0:
+        return []
     with con.cursor(dictionary=True) as cur:
         for type, id_list in ids.items():
             obtype = table_to_object(type)
