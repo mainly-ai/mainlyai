@@ -265,6 +265,7 @@ ALL_PROCESSOR_COMMANDS = {
     "terminal-pull": "Pull the output log from a listening terminal process.",
     "terminal-stop": "Stop the listening terminal process.",
     "terminal-start": "Start the listening terminal process.",
+    "execute": "Execute single node. Format: execute <node id> <recompile:optional> <use_inbound:optional>"
 }
 
 
@@ -515,16 +516,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         ko: miranda.Knowledge_object,
         deployed=False,
     ):
-        self.commands = {
-            "next": "Step to the next line of code",
-            "step": "Step inside function.",
-            "continue": "Continue execution until next breakpoint",
-            "clear": "Clear all breakpoints",
-            "stop": "Stop execution",
-            "start": "Start or restart execution of graph. <mid> is the metadata id of the node to start from. <enc> is an encoded string containing breakpoints",
-            "restart": "Restart execution of graph.",
-            "info": "Information about the current execution state.",
-        }
+        self.commands = ALL_PROCESSOR_COMMANDS
         self.command = None
         self.sctx = sc
         self.wob_id = ko.id
@@ -2228,6 +2220,32 @@ async def f_restart_and_reinitialize(execution_context: _Execution_context):
     assert False, "Not implemented yet."
 
 
+async def cmd_execute_node(ecx : _Execution_context, code_block_mid, flags):
+    # TODO support recompile flag
+    # TODO support use_inbound = populate receivers with inbound values instead of defaults
+
+    wob_code = ecx.code_cache[code_block_mid]
+    wob = ecx.cached_wobs[code_block_mid]
+
+    # setup execution context
+    old_current_node= ecx.current_node
+    ecx.current_node = wob
+    old_current_node_idx = ecx.current_node_idx
+    ecx.current_node_idx = ecx.execution_plan.index(wob.metadata_id)
+    try:
+        method_to_call = wob_code.wob._execute
+        args_for_call = [wob_code.wob]
+        if inspect.iscoroutinefunction(
+            method_to_call.__func__ if inspect.ismethod(method_to_call) else method_to_call
+        ):
+            await method_to_call(*args_for_call)
+        else:
+            method_to_call(*args_for_call)
+    except Exception as e:
+        ecx.current_node= old_current_node
+        ecx.current_node_idx = old_current_node_idx
+        handle_code_exception(ecx, wob, e)
+
 async def execute_node(
     dst_code, dst_wob, dst_wob_key, execution_context: _Execution_context
 ):
@@ -2821,27 +2839,7 @@ async def enter_interactive_mode(
         else:
             ca.ready_signal = "READY"
     if ca.command is None:
-        ca.commands = {
-            "break": "Insert a break point. Format: break <node id>:<line number>",
-            "clear": "Clear all breakpoints",
-            "stop": "Stop execution",
-            "start": "Start or restart execution of graph.",
-            "restart": "Hard restart execution of graph which means the graph is reloaded and reinitialized.",
-            "compile": "Compile a code block. Format: compile <code block id>",
-            "info": "Information about the current execution state.",
-            "reload": "Reload the graph and reinitialize all nodes.",
-            "retry": "Retry last execution plan from the last failed node.",
-            "continue": "Retry last execution plan from the last failed node.",
-            "git-pull": "Pull a changeset from github into the node",
-            "git-soft-pull": "Pull a changeset from github for review",
-            "git-push": "Push the content of a node to github",
-            "run-setup": "Run the setup code for the current graph.",
-            "terminal-push": "Push a command to a listening terminal process.",
-            "terminal-pull": "Pull the output log from a listening terminal process.",
-            "terminal-stop": "Stop the listening terminal process.",
-            "terminal-start": "Start the listening terminal process.",
-        }
-
+        ca.commands = ALL_PROCESSOR_COMMANDS
         i = ca.input("> ")
     else:
         i = ca.command
@@ -3042,6 +3040,19 @@ async def enter_interactive_mode(
         ca.send_response({"status": "READY"})
     elif i.startswith("reload"):
         execution_context.reload_graph = True
+    elif i.startswith("execute"):
+        cmd = i.split(" ")
+        if len(cmd) < 2:
+            ca.send_response("You need to specify a node id to execute")
+            return False, execution_context
+        if len(cmd) > 2:
+            params = cmd[2:]
+        else:
+            params = []
+        await cmd_execute_node(execution_context, int(cmd[1]), params)
+        return False, execution_context
+
+
     return False, execution_context
 
 

@@ -29,15 +29,11 @@ async def connect(ecx):
     }
     if altname:
         config_params["server_hostname"] = altname
-    
-    return await aio_pika.connect_robust(**config_params)
+    connection = await aio_pika.connect_robust(
+        **config_params
+    )
+    return connection
 
-async def register_code_exchange(ecx):
-    exchange = "nodes"
-    connection = await connect(ecx)
-    async with connection:
-        channel = await connection.channel()
-        await channel.declare_exchange(exchange, aio_pika.ExchangeType.TOPIC, durable=True)
 
 
 async def register_queue(ecx, name=None, topic=None, durable=False, exclusive=True, auto_delete=True, message_ttl=None, max_length=None, **kwargs):
@@ -46,9 +42,10 @@ async def register_queue(ecx, name=None, topic=None, durable=False, exclusive=Tr
     exchange = "nodes"
     if topic is None:
         if name is None:
+            if topic is None:
             topic = str(metadata_id)
         else:
-            # extract metadata_id from name 
+            # extract metadata_id from name
             if ":" in name:
                 topic = name.split(":")[1]
             if "." in topic:
@@ -87,7 +84,6 @@ async def register_queue(ecx, name=None, topic=None, durable=False, exclusive=Tr
             "durable": durable,
             "exclusive": exclusive,
             "auto_delete": auto_delete,
-            "arguments": arguments,
             **kwargs
         }
     )

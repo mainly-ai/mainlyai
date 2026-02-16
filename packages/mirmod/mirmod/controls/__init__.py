@@ -18,6 +18,8 @@ from .audio import Audio
 from .imagemask import ImageMask
 from .chat_preview import ChatPreview
 from .codeeditor import CodeEditor
+from .execute_node import ExecuteNode
+from .jump_to_url import JumpToURL
 
 __all__ = [
     "Notice",
@@ -40,4 +42,6 @@ __all__ = [
     "ImageMask",
     "ChatPreview",
     "CodeEditor",
+    "ExecuteNode",
+    "JumpToURL"
 ]
