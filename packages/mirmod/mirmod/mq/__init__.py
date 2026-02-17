@@ -43,7 +43,7 @@ async def register_queue(ecx, name=None, topic=None, durable=False, exclusive=Tr
     if topic is None:
         if name is None:
             if topic is None:
-            topic = str(metadata_id)
+                topic = str(metadata_id)
         else:
             # extract metadata_id from name
             if ":" in name:
