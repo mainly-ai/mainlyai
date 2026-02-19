@@ -7,6 +7,7 @@ from mirmod import processor_graph as pg
 from mirmod.execution_context import (
     Execution_context_api,
     set_current_execution_context,
+    get_execution_context
 )
 from mirmod.controls import Notice
 from mirmod.storage import get_storage_interface_from_ecx
@@ -45,7 +46,29 @@ from types import ModuleType
 import pika
 import random
 import ssl
+import typing # don't remove!
+from typing import List
+import networkx as nx
+#import atexit, gc, io, sys
 
+#@atexit.register
+#def dump_open_files():
+#    gc.collect()
+#    leaks = []
+#    for obj in gc.get_objects():
+#        try:
+#            if isinstance(obj, io.IOBase) and not obj.closed:
+#                leaks.append(obj)
+#        except Exception:
+#            pass
+#
+#    if leaks:
+#        print("\n--- OPEN IO OBJECTS AT EXIT ---", file=sys.stderr)
+#        for f in leaks[:50]:
+#            # Many IO objects don't have a nice .name; handle safely.
+#            name = getattr(f, "name", None)
+#            print(f"Type={type(f).__name__} closed={f.closed} name={name!r} repr={f!r}", file=sys.stderr)
+#        print(f"Total open IO objects: {len(leaks)}", file=sys.stderr)
 
 pickle.settings["recurse"] = True
 pickle.load_types(pickleable=True, unpickleable=True)
@@ -163,7 +186,7 @@ DEFAULT_STORAGE_POLICY = Default_storage_policy()
 INJECTED_HEADER_SIZE = (
     4  # The number of lines we inject in each code block before executing it.
 )
-WOB_FILE_TEMPLATE_PATH = "WOB-{}.py"  # NOTE: if changed; fix replace_wob_patterns()
+WOB_FILE_TEMPLATE_PATH = "WOB{}.py"  # NOTE: if changed; fix replace_wob_patterns()
 
 has_executed_setup = {}
 
@@ -308,7 +331,8 @@ class CommandActorDbg(CommandActorBase):
     def validate(self, command: str):
         command = command.strip()
         if " " in command:
-            cmd, param = command.split(" ")
+            l= command.split(" ")
+            cmd, param = l[0], " ".join(l[1:])
         else:
             cmd = command
         # print ("|=> DEBUG2: cmd = {}, param = {}".format(cmd, param))
@@ -371,7 +395,8 @@ class CommandActor(CommandActorBase):
     def validate(self, command: str):
         command = command.strip()
         if " " in command:
-            cmd, param = command.split(" ")
+            l = command.split(" ")
+            cmd, param = l[0], " ".join(l[1:])
         else:
             cmd = command
         if cmd not in self.commands.keys():
@@ -587,7 +612,8 @@ class CommandActorRabbitMQ(CommandActorBase):
     def validate(self, command: str):
         command = command.strip()
         if " " in command:
-            cmd, param = command.split(" ")
+            l = command.split(" ")
+            cmd, param = l[0], " ".join(l[1:])
         else:
             cmd = command
         if cmd not in self.commands.keys():
@@ -866,105 +892,124 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
                     attributes = NG.edges[e0, e1]["attributes"]
                     attributes.append(a)
 
+def cache_code_and_init(wob, NG, code_cache):
+    compiled_code_cache: dict[int, object] = {}
+    api = wob.api
+    sc = wob.sctx
+    wob_key = int(wob.metadata_id)
+    if wob_key not in NG.nodes:
+        # print ("|=> Skipping code block \"{}\" ({}) because it doesn't exist in the graph".format(wob.name,wob.metadata_id))
+        return True
+    if api is None:
+        print(
+            '|=> WARNING: Skipping code block "{}" ({}) because it doesn\'t have an API'.format(
+                wob.name, wob.metadata_id
+            )
+        )
+        return True
+    japi = json.loads(api)
+    if japi is None:
+        print(
+            '|=> WARNING: Skipping code block "{}" ({}) because it doesn\'t have a valid API'.format(
+                wob.name, wob.metadata_id
+            )
+        )
+        print ("api = ", api)
+        return True
+    dyn_attrs = {}
+    if "attributes" in japi and japi["attributes"] is not None:
+        for attr in japi["attributes"]:
+            if (
+                attr is not None
+                and "value" in attr
+                and "name" in attr
+                and attr["value"] is not None
+            ):
+                dyn_attrs[attr["name"]] = attr["value"]
+    # If the code block doesn't include the header we add it here.
+    preamble = (
+        f'from mirmod.workflow_object import WOB\nwob = WOB("""{wob.name}""")'
+    )
+    dyn_attr_str = f"_DYNAMIC_NODE_ATTRS = {json.dumps(dyn_attrs)}"
+    self_id_str = f"_THIS_WOB_ID = {wob.id}"
+    runtime_code = f"{dyn_attr_str}\n{self_id_str}\n{preamble}\n{wob.body}"
+    if len(runtime_code) < 5:
+        print(
+            '|=> WARNING: Skipping code block "{}" ({}) because it is too short'.format(
+                wob.name, wob.metadata_id
+            )
+        )
+        return True
+    with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w+") as f:
+        f.write(runtime_code)
+    if wob_key not in code_cache:
+        try:
+            # Create a hash of the code to use as a cache key.
+            code_hash = hash(runtime_code)
+            if wob.update_policy == "SUBSCRIBE":
+                org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
+                runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
+                code_hash = hash(runtime_code)
+
+            if code_hash not in compiled_code_cache:
+                # If code is not cached, compile it and store the compiled code object.
+                # The filename includes the wob_key for better traceback messages.
+                filename = WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
+                compiled_code = compile(
+                    runtime_code, filename=filename, mode="exec"
+                )
+                compiled_code_cache[code_hash] = compiled_code
+
+            # Retrieve the compiled code from the cache.
+            cached_compiled_code = compiled_code_cache[code_hash]
+
+            # Create a new, empty module object for this specific node.
+            # The name is unique to avoid conflicts in sys.modules.
+            module_name = f"WOB{wob.metadata_id}"
+            spec = importlib.util.spec_from_loader(module_name, loader=None)
+            new_module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = new_module
+
+            # inject the typing module into the namespace
+            new_module.typing = sys.modules["typing"]
+            new_module.__dict__["__builtins__"] = globals()["__builtins__"]
+
+            # Execute the cached compiled code in the new module's namespace.
+            exec(cached_compiled_code, new_module.__dict__)
+            code_cache[wob_key] = new_module
+        except Exception as e:
+            print(
+                '|=> WARNING: Skipping code block "{}" ({}) because it failed to compile'.format(
+                    wob.name, wob.metadata_id
+                )
+            )
+            print(f"|=> The specific error was: {e}")
+            print(process_traceback(INJECTED_HEADER_SIZE))
+            return True
+        src_WOB: WOB = code_cache[wob_key].wob
+        try:
+            src_WOB._init(src_WOB)
+        except Exception as e:
+            raise CodeCacheException(wob_key, e)
+        code_cache[wob_key].__dict__["__file__"] = os.path.abspath(
+            WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
+        )
+    return False
+
 
 def cache_code_and_init_nodes(NG, cached_wobs):
     """Compile all code and initialize all nodes."""
-    start_time = time.time()
-    compiled_code_cache: dict[int, object] = {}
     code_cache: dict = {}
+    start_time = time.time()
     for i, wob in enumerate(cached_wobs.values()):
-        api = wob.api
-        wob_key = int(wob.metadata_id)
-        if wob_key not in NG.nodes:
-            # print ("|=> Skipping code block \"{}\" ({}) because it doesn't exist in the graph".format(wob.name,wob.metadata_id))
+        if cache_code_and_init(wob, NG, code_cache):
             continue
-        if api is None:
-            print(
-                '|=> WARNING: Skipping code block "{}" ({}) because it doesn\'t have an API'.format(
-                    wob.name, wob.metadata_id
-                )
-            )
-            continue
-        api = json.loads(api)
-        dyn_attrs = {}
-        if "attributes" in api and api["attributes"] is not None:
-            for attr in api["attributes"]:
-                if (
-                    attr is not None
-                    and "value" in attr
-                    and "name" in attr
-                    and attr["value"] is not None
-                ):
-                    dyn_attrs[attr["name"]] = attr["value"]
-        # If the code block doesn't include the header we add it here.
-        preamble = (
-            f'from mirmod.workflow_object import WOB\nwob = WOB("""{wob.name}""")'
-        )
-        dyn_attr_str = f"_DYNAMIC_NODE_ATTRS = {json.dumps(dyn_attrs)}"
-        self_id_str = f"_THIS_WOB_ID = {wob.id}"
-        runtime_code = f"{dyn_attr_str}\n{self_id_str}\n{preamble}\n{wob.body}"
-        if len(runtime_code) < 5:
-            print(
-                '|=> WARNING: Skipping code block "{}" ({}) because it is too short'.format(
-                    wob.name, wob.metadata_id
-                )
-            )
-            continue
-        with open(WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), "w+") as f:
-            f.write(runtime_code)
-        if wob_key not in code_cache:
-            try:
-                # Create a hash of the code to use as a cache key.
-                code_hash = hash(runtime_code)
-                if wob.update_policy == "SUBSCRIBE":
-                    org_wob = miranda.Code_block(sc, metadata_id=wob.cloned_from_id)
-                    runtime_code = f"{dyn_attr_str}\n{preamble}\n{org_wob.body}"
-                    code_hash = hash(runtime_code)
-
-                if code_hash not in compiled_code_cache:
-                    # If code is not cached, compile it and store the compiled code object.
-                    # The filename includes the wob_key for better traceback messages.
-                    filename = WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
-                    compiled_code = compile(
-                        runtime_code, filename=filename, mode="exec"
-                    )
-                    compiled_code_cache[code_hash] = compiled_code
-
-                # Retrieve the compiled code from the cache.
-                cached_compiled_code = compiled_code_cache[code_hash]
-
-                # Create a new, empty module object for this specific node.
-                # The name is unique to avoid conflicts in sys.modules.
-                module_name = f"WOB{wob.metadata_id}"
-                spec = importlib.util.spec_from_loader(module_name, loader=None)
-                new_module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = new_module
-
-                # Execute the cached compiled code in the new module's namespace.
-                exec(cached_compiled_code, new_module.__dict__)
-                code_cache[wob_key] = new_module
-            except Exception:
-                print(
-                    '|=> WARNING: Skipping code block "{}" ({}) because it failed to compile'.format(
-                        wob.name, wob.metadata_id
-                    )
-                )
-                print(process_traceback(INJECTED_HEADER_SIZE))
-                continue
-            src_WOB: WOB = code_cache[wob_key].wob
-            try:
-                src_WOB._init(src_WOB)
-            except Exception as e:
-                raise CodeCacheException(wob_key, e)
-            code_cache[wob_key].__dict__["__file__"] = os.path.abspath(
-                WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id)
-            )
-
     end_time = time.time()
     print(
         f"|=> DEBUG: cache_code_and_init_nodes took {end_time - start_time:.4f} seconds"
     )
     return code_cache
+
 
 
 def load_default_values(G, cached_wobs, code_cache):
@@ -1990,6 +2035,7 @@ def async_execute_plan(
 async def execute_plan(
     execution_context: _Execution_context, cached_wobs, code_cache, in_dispatch=False
 ):
+    old_context_context = get_execution_context()
     set_current_execution_context(execution_context)
     order_of_execution = execution_context.execution_plan
     while True:
@@ -2164,6 +2210,7 @@ async def execute_plan(
     # print ("|=> Nodes executed in the following order:")
     # for i, msg in enumerate(execution_log):
     #  print ("|=>   {}: {}".format(i, msg))
+    set_current_execution_context(old_context_context)
 
 
 async def f_next_element(execution_context: _Execution_context):
@@ -2220,18 +2267,40 @@ async def f_restart_and_reinitialize(execution_context: _Execution_context):
     assert False, "Not implemented yet."
 
 
-async def cmd_execute_node(ecx : _Execution_context, code_block_mid, flags):
-    # TODO support recompile flag
-    # TODO support use_inbound = populate receivers with inbound values instead of defaults
+async def cmd_execute_node(ecx : _Execution_context, code_block_mid: int, flags: List[str]):
+
+    if "recompile" in flags or code_block_mid not in ecx.code_cache:
+        ecx.cached_wobs[code_block_mid] = miranda.Code_block(ecx.get_security_context(), metadata_id=code_block_mid)
+        G = ecx.get_execution_graph()
+        if code_block_mid not in G:
+            G.add_node(code_block_mid) # dummy entry
+        cache_code_and_init(ecx.cached_wobs[code_block_mid], ecx.get_execution_graph(), ecx.code_cache)
+        assert code_block_mid in ecx.code_cache, "This should not happen :("
+        if code_block_mid not in ecx.get_execution_graph():
+            ecx.get_execution_graph().add_node(code_block_mid) # make dummy graph
+
+
 
     wob_code = ecx.code_cache[code_block_mid]
     wob = ecx.cached_wobs[code_block_mid]
 
     # setup execution context
-    old_current_node= ecx.current_node
-    ecx.current_node = wob
-    old_current_node_idx = ecx.current_node_idx
-    ecx.current_node_idx = ecx.execution_plan.index(wob.metadata_id)
+    new_execution_plan = [pg.Execution_node(ecx.get_execution_graph, code_block_mid, code_cache=ecx.code_cache, wob_cache=ecx.cached_wobs)]
+    execution_context = _Execution_context(ecx.current_user, ecx.docker_job,
+                                           ecx.get_knowledge_object(), ecx.get_security_context(),
+                                           new_execution_plan, cached_wobs=ecx.cached_wobs,
+                                           code_cache=ecx.code_cache, start_idx=0,
+                                           target_wob_mid=-1, execution_graph=ecx.get_execution_graph(),
+                                           deployed=False, command_actor=ecx.command_actor)
+    old_execution_context = get_execution_context()
+    set_current_execution_context(execution_context)
+    gc = execution_context.get_global_context()
+    gc["__execute_node__"] = wob
+    if "use_inbound" in flags:
+        # inject receiver values from Execute control
+        # TODO
+        pass
+
     try:
         method_to_call = wob_code.wob._execute
         args_for_call = [wob_code.wob]
@@ -2242,9 +2311,13 @@ async def cmd_execute_node(ecx : _Execution_context, code_block_mid, flags):
         else:
             method_to_call(*args_for_call)
     except Exception as e:
-        ecx.current_node= old_current_node
-        ecx.current_node_idx = old_current_node_idx
-        handle_code_exception(ecx, wob, e)
+        handle_code_exception(execution_context, wob, e)
+
+    set_current_execution_context(old_execution_context)
+    if "__execute_node__" in gc:
+        gc["__execute_node__"] = None
+        del gc["__execute_node__"]
+
 
 async def execute_node(
     dst_code, dst_wob, dst_wob_key, execution_context: _Execution_context
@@ -2729,15 +2802,11 @@ def reload_graph(current_user, docker_job, ko, run_as_deployed: bool, target_wob
     # Load default values
     load_default_values(NG, cached_wobs, code_cache)
 
-    if not run_as_deployed:
-        target_wob = None
-        if target_wob_mid != -1:
-            assert target_wob_mid in cached_wobs, (
-                "ERROR: reload_graph: No such target wob mid: {}".format(target_wob_mid)
-            )
-            target_wob = cached_wobs[int(target_wob_mid)]
-        if target_wob is not None:
-            NG = prune_graph_for_target(NG, cached_wobs, target_wob)
+    target_wob = None
+    if target_wob_mid != -1:
+        target_wob = cached_wobs[int(target_wob_mid)]
+    if target_wob is not None:
+        NG = prune_graph_for_target(NG, cached_wobs, target_wob)
 
     # calculate order of execution. Execution chains with higher order goes first.
     order_of_execution = create_execution_plan(NG, cached_wobs, code_cache)
@@ -3046,10 +3115,20 @@ async def enter_interactive_mode(
             ca.send_response("You need to specify a node id to execute")
             return False, execution_context
         if len(cmd) > 2:
-            params = cmd[2:]
+            params = cmd[1:]
         else:
             params = []
+        try:
+            execution_context, _, _, _, _ = (
+                        reload_graph(current_user, execution_context.docker_job, ko, False, command_actor=ca)
+                    )
+        except Exception as e:
+            print(e)
+
+        ca.send_response({"status": "RUNNING"})
         await cmd_execute_node(execution_context, int(cmd[1]), params)
+        execution_context.reload_graph = True
+        ca.send_response({"status": "READY"})
         return False, execution_context
 
 

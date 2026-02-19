@@ -16,7 +16,7 @@ class ExecuteNode:
     return {
       'kind': self.kind,
       'label': self.label,
-      'use_inbound': self.use_inbound,
-      'recompile': self.recompile,
+      'use_inbound': self.use_inbound, # receive from adjacent nodes before execute
+      'recompile': self.recompile, # reload node and recompile
       'disabled': self.disabled
     }

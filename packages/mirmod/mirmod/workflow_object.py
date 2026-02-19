@@ -557,10 +557,13 @@ def _unsafe_get_code_entry_class(
 
     with redirect_stdout(stdout), redirect_stderr(stderr):
         program = compile(program_source, program_name, "exec")
-        program_locals = {}
-        program_globals = {}
-        exec(program, program_globals, program_locals)
-        for k, v in program_locals.items():
+        namespace = {"__builtins__": globals()["__builtins__"]}
+        import typing
+        namespace["typing"] = typing
+        exec(program, namespace)
+        program_globals = namespace
+        program_locals = namespace
+        for k, v in namespace.items():
             try:
                 if isinstance(v, entry_class_type):
                     entry_class = v
