@@ -860,7 +860,10 @@ def cache_wobs(sc, G, all_wobs=False):
     """The graph contains the metadata id of each code block, but we need to load the entire code block into memory in order
     to get API and code body so we can later call the transmitters and receivers."""
     cached_wobs: dict = {}
-    obs = miranda.find_objects_by_metadata_ids(sc, {"CODE": list(G.nodes)})
+    nodes= list(G.nodes)
+    if len(nodes) == 0:
+        return cached_wobs
+    obs = miranda.find_objects_by_metadata_ids(sc, {"CODE": nodes})
     for ob in obs:
         cached_wobs[ob.metadata_id] = ob
         setattr(cached_wobs[ob.metadata_id], "executed", False)
@@ -1170,14 +1173,17 @@ class _Execution_context(Execution_context_api):
         self.execution_plan: list[pg.Execution_node] = None
         if execution_plan is not None:
             if len(execution_plan) == 0:
-                raise Exception(
+                print ("|=> WARNING: "
                     "Execution plan is empty. A graph must consist of at least two connected nodes."
                 )
             self.set_execution_plan(execution_plan)
             """The current node is the metadata_id of the current node in the execution plan."""
-            self.current_node: pg.Execution_node = self.execution_plan[
-                self.current_node_idx
-            ]
+            if len(self.execution_plan) > self.current_node_idx:
+                self.current_node: pg.Execution_node = self.execution_plan[
+                    self.current_node_idx
+                ]
+            else:
+                self.current_node = pg.Execution_node(nx.DiGraph(), -1, {}, {})
         """The stage is the name of the current stage of the execution, but it isn't used at the moment :) """
         self.stage = "Not initialized"
         """The previous node is the metadata_id of the previous node in the execution plan."""
@@ -1252,7 +1258,8 @@ class _Execution_context(Execution_context_api):
         }
         self.executable_nodes = set([n.node_mid for n in execution_plan])
         self.current_node_idx = 0
-        self.current_node = execution_plan[self.current_node_idx]
+        if len(execution_plan) > self.current_node_idx:
+            self.current_node = execution_plan[self.current_node_idx]
         self.send_execution_plan()
 
     def stop_current_iterator(self):
@@ -1395,9 +1402,12 @@ class _Execution_context(Execution_context_api):
                     )
                 )
             self.current_node_idx = absolute_idx
-        self.current_node: pg.Execution_node = self.execution_plan[
-            self.current_node_idx
-        ]
+        if len(self.execution_plan) > self.current_node_idx:
+            self.current_node: pg.Execution_node = self.execution_plan[
+                self.current_node_idx
+            ]
+        else:
+            self.current_node = pg.Execution_node(nx.DiGraph(), -1, {}, {})
         self.send_execution_plan()
 
     def send_execution_plan(self):
@@ -3118,13 +3128,6 @@ async def enter_interactive_mode(
             params = cmd[1:]
         else:
             params = []
-        try:
-            execution_context, _, _, _, _ = (
-                        reload_graph(current_user, execution_context.docker_job, ko, False, command_actor=ca)
-                    )
-        except Exception as e:
-            print(e)
-
         ca.send_response({"status": "RUNNING"})
         await cmd_execute_node(execution_context, int(cmd[1]), params)
         execution_context.reload_graph = True
