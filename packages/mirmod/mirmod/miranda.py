@@ -1824,7 +1824,17 @@ def find_wob_by_name_and_tag(
 def notify_gui(sc: Security_context, payload: str):
     """Notifies the browser that a GUI element needs to be updated.
     The message is broadcasted to all existing websockets of the current user."""
-    # TODO: use execution context here instead of loading message every call
+    # Use execution context here instead of loading message every call.
+    try:
+        # Signature of notify_gui is legacy. All future notifications should go through
+        # the Execution_context
+        ecx = get_execution_context()
+        if hasattr(ecx, "notify_gui") and ecx.notify_gui is not None:
+            ecx.notify_gui(payload)
+            return
+    except Exception as e:
+        pass
+
     if "WOB_MESSAGE" in os.environ:
         try:
             msg = json.loads(os.environ["WOB_MESSAGE"])

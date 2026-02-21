@@ -186,7 +186,7 @@ DEFAULT_STORAGE_POLICY = Default_storage_policy()
 INJECTED_HEADER_SIZE = (
     4  # The number of lines we inject in each code block before executing it.
 )
-WOB_FILE_TEMPLATE_PATH = "WOB{}.py"  # NOTE: if changed; fix replace_wob_patterns()
+WOB_FILE_TEMPLATE_PATH = "WOB-{}.py"  # NOTE: if changed; fix replace_wob_patterns()
 
 has_executed_setup = {}
 
@@ -2280,15 +2280,20 @@ async def f_restart_and_reinitialize(execution_context: _Execution_context):
 async def cmd_execute_node(ecx : _Execution_context, code_block_mid: int, flags: List[str]):
 
     if "recompile" in flags or code_block_mid not in ecx.code_cache:
-        ecx.cached_wobs[code_block_mid] = miranda.Code_block(ecx.get_security_context(), metadata_id=code_block_mid)
+        ob = miranda.Code_block(ecx.get_security_context(), metadata_id=code_block_mid)
+        if ob.id == -1:
+            raise Exception("No such Code_block metadat_id = ",code_block_mid)
+        ecx.cached_wobs[code_block_mid] = ob
         G = ecx.get_execution_graph()
         if code_block_mid not in G:
-            G.add_node(code_block_mid) # dummy entry
+            G.add_node(code_block_mid,
+                        name=ob.name,
+                        metadata_id=int(ob.metadata_id),
+                        id=int(ob.id),
+                        type="code",
+                        wob=ob.__repr__() if repr else ob)
         cache_code_and_init(ecx.cached_wobs[code_block_mid], ecx.get_execution_graph(), ecx.code_cache)
         assert code_block_mid in ecx.code_cache, "This should not happen :("
-        if code_block_mid not in ecx.get_execution_graph():
-            ecx.get_execution_graph().add_node(code_block_mid) # make dummy graph
-
 
 
     wob_code = ecx.code_cache[code_block_mid]
