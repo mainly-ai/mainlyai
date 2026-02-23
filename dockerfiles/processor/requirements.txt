@@ -19,3 +19,4 @@ niquests
 nest_asyncio
 urllib3<2
 aio-pika
+pexpect

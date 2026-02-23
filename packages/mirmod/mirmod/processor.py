@@ -3762,6 +3762,9 @@ def handle_terminal_cmd(current_user: str,ca: CommandActorBase, cmd: str, ko: mi
 
 if __name__ == "__main__":
     try:
+        home = os.getenv("HOME","")
+        if home == "":
+            os.environ["HOME"] = "/"
         temp_token = os.getenv("WOB_TOKEN")
         message = json.loads(os.getenv("WOB_MESSAGE"))
         docker_job_id = os.getenv("DOCKER_JOB_ID")

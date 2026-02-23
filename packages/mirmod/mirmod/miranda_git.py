@@ -5,7 +5,7 @@ import subprocess
 import os
 from typing import Dict, Tuple, Optional
 from .failure_mode import FailureMode, FailureModeHandler, RecoveryStrategy
-from typing import Callable
+from typing import Callable, List
 import pexpect
 import json
 import sys
@@ -19,13 +19,13 @@ def read_secret_wrapper(sc, key):
     return read_secret(sc, key)
 
 
-def run_subprocess_command(command: list) -> Tuple[bool, str, str]:
-    """
-    Run a git command and return the result.
+def run_subprocess_command(command: List[str]) -> Tuple[bool, str, str]:
+    env = os.environ.copy()
 
-    :param command: List of command parts
-    :return: Tuple of (success, stdout, stderr)
-    """
+    # git --global because it will try to write "/.gitconfig" if HOME isn't set.
+    home = env.get("HOME")
+    if not home:
+        env["HOME"] = "/"
     try:
         result = subprocess.run(
             command,
@@ -33,6 +33,7 @@ def run_subprocess_command(command: list) -> Tuple[bool, str, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
         return True, result.stdout, result.stderr
     except subprocess.CalledProcessError as e:
@@ -40,7 +41,11 @@ def run_subprocess_command(command: list) -> Tuple[bool, str, str]:
 
 
 def run_command(cmd, expecting=[], timeout=5):
-    c = pexpect.spawn(cmd, encoding="utf-8")
+    env = os.environ.copy()
+    if "HOME" not in env:
+        env["HOME"] = "/"
+
+    c = pexpect.spawn(cmd, encoding="utf-8", env=env)
     c.logfile = sys.stdout
     if len(expecting) == 0:
         i = c.expect([pexpect.EOF, "Press RETURN"], timeout=timeout)
