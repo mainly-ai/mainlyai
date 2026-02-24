@@ -25,7 +25,7 @@ def run_subprocess_command(command: List[str]) -> Tuple[bool, str, str]:
     # git --global because it will try to write "/.gitconfig" if HOME isn't set.
     home = env.get("HOME")
     if not home:
-        env["HOME"] = "/"
+        env["HOME"] = os.getcwd()
     try:
         result = subprocess.run(
             command,
@@ -43,7 +43,7 @@ def run_subprocess_command(command: List[str]) -> Tuple[bool, str, str]:
 def run_command(cmd, expecting=[], timeout=5):
     env = os.environ.copy()
     if "HOME" not in env:
-        env["HOME"] = "/"
+        env["HOME"] = os.getcwd()
 
     c = pexpect.spawn(cmd, encoding="utf-8", env=env)
     c.logfile = sys.stdout
