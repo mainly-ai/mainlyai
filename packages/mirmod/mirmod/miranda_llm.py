@@ -572,6 +572,11 @@ class ArgotConfiguredModel:
 
             elif event == "done":
                 finish_message()
+                if hasattr(self._stream_functor.__class__, "usage") and callable(
+                    getattr(self._stream_functor.__class__, "usage")
+                ):
+                    self._stream_functor.usage(payload.get("data", {}))
+
                 if hasattr(self._stream_functor.__class__, "done") and callable(
                     getattr(self._stream_functor.__class__, "done")
                 ):
@@ -682,6 +687,11 @@ class ArgotConfiguredModel:
 
             elif event == "done":
                 await finish_message()
+                if hasattr(self._stream_functor.__class__, "usage") and callable(
+                    getattr(self._stream_functor.__class__, "usage")
+                ):
+                    await self._stream_functor.usage(payload.get("data", {}))
+
                 if hasattr(self._stream_functor.__class__, "done") and callable(
                     getattr(self._stream_functor.__class__, "done")
                 ):
