@@ -2267,12 +2267,12 @@ def get_input_from(wob, socket):
 
 
 def transact_credits(
-    sc: Security_context, to_organization_id: int, amount: int, statement: str
+    sc: Security_context, to_user_id: int, amount: int, statement: str
 ):
-    """Send credits to an organization via a transaction."""
+    """Send credits to a user's organization via a transaction."""
     con = sc.connect()
     with con.cursor() as cur:
-        cur.callproc("sp_transact_credits", (to_organization_id, amount, statement))
+        cur.callproc("sp_transact_credits", (to_user_id, amount, statement))
         con.commit()
 
 
