@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1
 ENV UV_PYTHON_DOWNLOADS=automatic
 
 RUN apt-get update -y
-RUN apt install python3 openssh-client curl git -y
+RUN apt install python3 openssh-client curl git ripgrep fd-find -y
 
 COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
 
