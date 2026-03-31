@@ -58,6 +58,7 @@ miranda_admin_ops = { workspace = true }
 
 [dependency-groups]
 dev = [
+    "inquirer>=3.4.1",
     "poethepoet>=0.32.0",
     "pytest >= 8.3.4",
     "ruff >= 0.8.5",
