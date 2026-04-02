@@ -551,11 +551,7 @@ class CommandActorRabbitMQ(CommandActorBase):
         self.docker_job = docker_job
         self.trigger_run = False
         self.deployed = deployed
-        k = "{}_RUN".format(ko.id)
-        self.trigger_run = k in _the_global_context["process_context"]
-        if self.trigger_run:
-            del _the_global_context["process_context"][k]
-        write_process_context_to_disk()
+
         self.rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
         self.rabbitmq_port = int(os.getenv("RABBITMQ_PORT", 5672))
         self.rabbitmq_cafile= os.getenv("RABBITMQ_CAFILE", None)
@@ -665,9 +661,25 @@ class CommandActorRabbitMQ(CommandActorBase):
 
     def input(self, prompt):
         """Get a debug command from the message queue."""
+        k_base = "{}_RUN".format(self.wob_id)
+        found_key = None
+        target_mid = None
+        for key in list(_the_global_context["process_context"].keys()):
+            if key == k_base:
+                found_key = key
+                break
+            elif key.startswith(k_base + "_"):
+                found_key = key
+                target_mid = key[len(k_base) + 1:]
+                break
+
+        self.trigger_run = found_key is not None
+        if self.trigger_run:
+            del _the_global_context["process_context"][found_key]
+            write_process_context_to_disk()
         if self.trigger_run:
             self.trigger_run = False
-            self.command = "start"
+            self.command = "start {}".format(target_mid) if target_mid is not None else "start"
             self.send_response({"status": "RUNNING"})
             return self.command
         self.send_response({"status": self.ready_signal})
@@ -3056,6 +3068,7 @@ async def enter_interactive_mode(
             # save inbound message and web server thread
             execution_context.inbound_message = inbound_message
             # If the encoded parameter is -1 then we don't have any breakpoints
+
             if (
                 enc_param is not None
                 and enc_param != "-1"
@@ -3308,7 +3321,6 @@ def run_setup_code(
     ko = execution_context.get_knowledge_object()
     # if os.path.exists("{}_SETUP_COMPLETE".format(ko.id)):
     #  return
-    # print ("** DEBUG: ",execution_context.get_process_context())
     if (
         execution_context.get_process_context().get(
             "{}_SETUP_COMPLETE".format(ko.id), None
@@ -3316,8 +3328,10 @@ def run_setup_code(
         is not None
     ):
         return
+    print ("|=> INFO: Running setup code for the current graph.")
     global has_executed_setup
-    for wob_key in order_of_execution:
+    for node in order_of_execution:
+        wob_key = node.node_mid
         if wob_key in has_executed_setup.keys():
             continue
         if wob_key not in cached_wobs:
@@ -3327,7 +3341,7 @@ def run_setup_code(
         wob = cached_wobs[wob_key]
         print("|=> Running setup code for: {}".format(wob.name))
         try:
-            wob_code = code_cache[int(wob_key)]
+            wob_code = code_cache[wob_key]
             wob_code.wob._setup(wob_code.wob)
             has_executed_setup[wob_key] = True
         except Exception as e:
@@ -3487,6 +3501,8 @@ async def process_knowledge_object(
                     command_actor=ca
                 )
             )
+            # Run setup code for all cached nodes and restart
+            run_setup_code(execution_context, order_of_execution, cached_wobs, code_cache)
 
             # set debug mode
             if debug_mode:
