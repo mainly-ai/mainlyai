@@ -1015,9 +1015,11 @@ def cache_code_and_init_nodes(NG, cached_wobs):
 
 
 
-def load_default_values(G, cached_wobs, code_cache):
+def load_default_values(G, cached_wobs, code_cache, nodes=None):
     """Loads the default values of the attributes into the WOBs and also increase order if the word 'policy' in in the name."""
-    for wob_key in G.nodes():
+    if nodes is None:
+        nodes = list(G.nodes)
+    for wob_key in nodes:
         if wob_key not in code_cache:
             continue
         wob_code = code_cache[int(wob_key)]
@@ -2276,6 +2278,38 @@ async def f_restart(execution_context: _Execution_context):
 async def f_restart_and_reinitialize(execution_context: _Execution_context):
     assert False, "Not implemented yet."
 
+async def process_all_inbound_edges(ecx : _Execution_context, wob, wob_code):
+    G = ecx.get_execution_graph()
+
+    in_edges = G.in_edges(wob.metadata_id, data=True)
+    for E in in_edges:
+        src_wob_key = E[0]
+
+        attr_list = (
+            E[2]["attributes"]
+            if E[2] is not None and "attributes" in E[2]
+            else []
+        )
+
+        src_wob = ecx.cached_wobs.get(src_wob_key)
+        src_code = ecx.code_cache.get(src_wob_key)
+
+        if src_wob is None or src_code is None:
+            continue
+
+        for attr in attr_list:
+            src_transmitter_key = attr.get("source_transmitter_key")
+            receiver_key = attr.get("destination_receiver_key")
+
+            res = await process_edge(
+                src_wob,
+                src_transmitter_key,
+                wob,
+                receiver_key,
+                src_code,
+                wob_code,
+                ecx
+            )
 
 async def cmd_execute_node(ecx : _Execution_context, code_block_mid: int, flags: List[str]):
 
@@ -2311,10 +2345,10 @@ async def cmd_execute_node(ecx : _Execution_context, code_block_mid: int, flags:
     set_current_execution_context(execution_context)
     gc = execution_context.get_global_context()
     gc["__execute_node__"] = wob
+    load_default_values(G, ecx.cached_wobs, ecx.code_cache, nodes=[wob.metadata_id])
     if "use_inbound" in flags:
         # inject receiver values from Execute control
-        # TODO
-        pass
+        await process_all_inbound_edges(execution_context, wob, wob_code)
 
     try:
         method_to_call = wob_code.wob._execute
