@@ -10,7 +10,7 @@ ENV UV_PYTHON_DOWNLOADS=automatic
 ARG EXTRA_APT_PACKAGES=""
 
 RUN apt-get update -y
-RUN apt install python3 openssh-client curl git ripgrep fd-find xvfb libegl1-mesa libosmesa6-dev mesa-utils -y
+RUN apt install python3 openssh-client curl git ripgrep fd-find xvfb libegl1-mesa-dev libosmesa6-dev mesa-utils -y
 RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then apt install -y $EXTRA_APT_PACKAGES; fi
 
 COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
