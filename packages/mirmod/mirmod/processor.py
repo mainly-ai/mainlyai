@@ -892,20 +892,21 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
     # hence we make sure to collect all in a list before continuing.
     attrs = [attr for attr in miranda.bulk_get_edge_attributes(sc, edge_request)]
     seen = set()
-    for attr in attrs:
-        for e0, e1, attr in attrs:
-            for receiver in attr.keys():
-                tr = attr[receiver]
-                a = {
-                    "source_transmitter_key": tr[0],
-                    "destination_receiver_key": receiver,
-                    "kind": tr[1],
-                }
-                b = (e0, e1, tr[0], receiver)
-                if b not in seen:
-                    seen.add(b)
-                    attributes = NG.edges[e0, e1]["attributes"]
-                    attributes.append(a)
+    for e0, e1, attr in attrs:
+        if attr is None:
+            continue
+        for receiver in attr.keys():
+            tr = attr[receiver]
+            a = {
+                "source_transmitter_key": tr[0],
+                "destination_receiver_key": receiver,
+                "kind": tr[1],
+            }
+            b = (e0, e1, tr[0], receiver)
+            if b not in seen:
+                seen.add(b)
+                attributes = NG.edges[e0, e1]["attributes"]
+                attributes.append(a)
 
 def cache_code_and_init(wob, NG, code_cache):
     compiled_code_cache: dict[int, object] = {}
