@@ -894,6 +894,7 @@ def construct_property_edge_list(sc, NG: nx.DiGraph, cache):
     seen = set()
     for e0, e1, attr in attrs:
         if attr is None:
+            print ("|=> DEBUG: {} - {} has NoneType attribute. Skipping.".format(cache[e0].name, cache[e1].name))
             continue
         for receiver in attr.keys():
             tr = attr[receiver]
