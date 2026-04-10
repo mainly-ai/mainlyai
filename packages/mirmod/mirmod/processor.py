@@ -2490,7 +2490,8 @@ def get_policy_graph(NG: nx.DiGraph, cached_wobs: dict):
 def prune_graph_for_target(
     NG: nx.DiGraph, cached_wobs: dict, target_node: miranda.Code_block
 ):
-    policy_set = get_policy_graph(NG, cached_wobs)
+    '''We're no longer using policy graphs and it is better to execute the subgraph rather than anything up to a certain point.'''
+    #policy_set = get_policy_graph(NG, cached_wobs)
     connected_subgraphs = [
         NG.subgraph(c).copy() for c in nx.weakly_connected_components(NG)
     ]
@@ -2499,15 +2500,17 @@ def prune_graph_for_target(
         if target_node.metadata_id in subgraph.nodes:
             G = subgraph
             break
-    if G is None:
-        return G
 
-    children = list(nx.algorithms.dag.descendants(G, target_node.metadata_id))
-    if len(children) == 0:
-        return G
-    nodes = (set(G) - set(children)) | set([target_node.metadata_id]) | set(policy_set)
-    NG = NG.subgraph(nodes)
-    return NG
+    return G
+    #if G is None:
+    #    return G
+
+    #children = list(nx.algorithms.dag.descendants(G, target_node.metadata_id))
+    #if len(children) == 0:
+    #    return G
+    #nodes = (set(G) - set(children)) | set([target_node.metadata_id]) | set(policy_set)
+    #NG = NG.subgraph(nodes)
+    #return NGX
 
 
 def prune_graph_from_disabled(NG: nx.DiGraph, cached_wobs: dict):
