@@ -272,77 +272,34 @@ def split_graph(
     if n not in G:
         raise ValueError(f"Node {n} not in graph")
 
-    # Initialize sets
-    right_set = set()
-    left_set = set()
+    from collections import deque
 
-    # 1. Identify all successors to n and mark them as Right_set
-    # Using BFS to find all nodes reachable from n
-    queue = deque([n])
-    visited = {n}
+    # 1. Left set starts with all ancestors of n
+    left_set = set(nx.ancestors(G, n))
 
+    # 2. Right set starts with all descendants of n
+    right_set = set(nx.descendants(G, n))
+
+    # 3. Expand left_set: it claims any nodes connected to it (both predecessors and successors)
+    #    as long as they are NOT in right_set and NOT n.
+    queue = deque(left_set)
     while queue:
-        current = queue.popleft()
-        if current != n:  # Don't add n to right_set yet
-            right_set.add(current)
+        curr = queue.popleft()
 
-        for successor in G.successors(current):
-            if successor not in visited:
-                visited.add(successor)
-                queue.append(successor)
+        for succ in G.successors(curr):
+            if succ != n and succ not in left_set and succ not in right_set:
+                left_set.add(succ)
+                queue.append(succ)
 
-    # 2. Identify all nodes where in_degree==0 and find paths to n
-    source_nodes = [node for node in G.nodes() if G.in_degree(node) == 0]
+        for pred in G.predecessors(curr):
+            if pred != n and pred not in left_set and pred not in right_set:
+                left_set.add(pred)
+                queue.append(pred)
 
-    # Helper function to find all nodes on paths from source to target
-    def find_nodes_on_paths(source, target, visited=None):
-        if visited is None:
-            visited = set()
-
-        if source == target:
-            return {source}
-
-        visited.add(source)
-        nodes_on_paths = set()
-
-        for successor in G.successors(source):
-            if successor not in visited:
-                path_nodes = find_nodes_on_paths(successor, target, visited.copy())
-                if path_nodes:
-                    nodes_on_paths.add(source)
-                    nodes_on_paths.update(path_nodes)
-
-        return nodes_on_paths
-
-    # Find nodes on paths from source nodes to n
-    for source in source_nodes:
-        if source != n:
-            path_nodes = find_nodes_on_paths(source, n)
-            if path_nodes:
-                # Don't include n itself yet
-                path_nodes.discard(n)
-                left_set.update(path_nodes)
-
-    # 3. For all unmarked source nodes, check if they have paths to Right_set
-    unmarked_sources = [
-        node
-        for node in source_nodes
-        if node not in left_set and node not in right_set and node != n
-    ]
-
-    for source in unmarked_sources:
-        # Check if there's a path from source to any node in right_set
-        for right_node in right_set:
-            path_nodes = find_nodes_on_paths(source, right_node)
-            if path_nodes:
-                # Found a path to right_set
-                right_set.update(path_nodes)
-                break
-
-    # 4. All remaining unmarked nodes go to the Left_set
+    # 4. Any remaining unmarked nodes go to right_set
     all_nodes = set(G.nodes())
     unmarked = all_nodes - right_set - left_set - {n}
-    left_set.update(unmarked)
+    right_set.update(unmarked)
 
     # 5. Handle the node n based on include_node parameter
     if include_node:
@@ -778,8 +735,16 @@ class Default_node_iterator:
         return True
 
     def set_start_node(self, node_mid, neighbourhood={}):
+
+        if node_mid in self.sorted_nodes:
+            #self.current_index = self.sorted_nodes.index(self.start_node_mid)
+            # We're lazy here and restarts from index 0 to avoid losing any node.
+            self.current_index = 0
+            return
+        else:
+            self.current_index = 0
         self.start_node_mid = node_mid
-        self.sorted_nodes = []
+        self.neighbourhood = neighbourhood
         self.transmitter_receiver_count = 0  # Reset the counter
 
         _, subgraph = split_graph(self.graph.copy(), node_mid, include_node=True)
@@ -807,10 +772,12 @@ class Default_node_iterator:
                 ancestors_of_transmitter = nx.ancestors(self.graph, pair[0])
                 nodes_in_field = ancestors_of_receiver - ancestors_of_transmitter
                 nodes_in_field.add(pair[0])
-                nodes_in_field.add(pair[1])
+                #nodes_in_field.add(pair[1])
 
                 # Contract the field into a single node
                 G.add_node(field_node_id)
+                G.add_edge(field_node_id, pair[1])
+
 
                 # Reconnect edges
                 for u, v, data in self.graph.edges(data=True):
@@ -822,13 +789,14 @@ class Default_node_iterator:
                         u not in nodes_in_field and v in nodes_in_field or u == pair[0]
                     ):
                         # Incoming edge to the field
-                        G.add_edge(u, field_node_id, **data)
+                        if u != -field_node_id:
+                            G.add_edge(u, field_node_id, **data)
 
                 G.remove_nodes_from(nodes_in_field)
                 # show_graph(G, self.wob_cache)
 
             # Trimmed graph without fields.
-            self.sorted_nodes = list(nx.topological_sort(G))
+            self.sorted_nodes.extend(list(nx.topological_sort(G)))
         else:
             # Eliminate nodes and paths not connected to the start node.
             component_sets = nx.weakly_connected_components(subgraph)
@@ -841,7 +809,7 @@ class Default_node_iterator:
                     )
                     sg = self.graph.subgraph(nodes_to_sort)
                     # show_graph(sg, self.wob_cache)
-                    self.sorted_nodes = list(nx.topological_sort(sg))
+                    self.sorted_nodes.extend(list(nx.topological_sort(sg)))
                     break
         try:
             # Because of how we iterate over the sorted nodes we need to swap the order so that the first
@@ -862,6 +830,7 @@ class Default_node_iterator:
             "out_edges": iter([n for n in self.graph.out_edges(self.start_node_mid)]),
             "previous": self.start_node_mid,
         }
+        #print ("SORTED NODES = ",self.sorted_nodes)
 
     def __iter__(self):
         if not self.sorted_nodes:
@@ -1799,6 +1768,7 @@ class Generate_execution_plan:
         self.dispatch_field: str = dispatch_field
         self.dispatcher: dict = {}
         self.compile_subgraph = False
+        self.default_iterator = None
 
     def register_transmitter_field(self, field):
         if field.transmitter_mid not in self.transmitter_mid_to_field_descriptor:
@@ -1822,11 +1792,13 @@ class Generate_execution_plan:
         ):
             return self.next_node_itr
 
+        if self.default_iterator is None:
+            self.default_iterator = Default_node_iterator(
+                self.execution_graph, self.wob_cache, self.code_cache, self
+            )
         # Try each iterator type to see which one can handle this node
         iterators = [
-            Default_node_iterator(
-                self.execution_graph, self.wob_cache, self.code_cache, self
-            ),
+            self.default_iterator,
             Field_iterator(self.execution_graph, self.wob_cache, self.code_cache, self),
         ]
 
@@ -1837,7 +1809,7 @@ class Generate_execution_plan:
             ):
                 if node_mid in self.dispatcher:
                     iterator = self.dispatcher[node_mid]
-                # print("** SWITCH: ", type(iterator))
+                #print("** SWITCH: ", type(iterator))
                 iterator.set_start_node(node_mid)
                 # issue a signal to the current iterator that we're leaving
                 if self.next_node_itr:
@@ -1940,7 +1912,7 @@ class Generate_execution_plan:
         # Add to execution plan
         exec_node = self.next_node_itr.get_start_node()
         self.last_node_mid = exec_node.node_mid
-        # print ("** COMMIT: ",exec_node)
+        #print ("** COMMIT: ",exec_node)
         self.execution_plan.append(exec_node)
         visited_nodes = set()
         visited_nodes.add(exec_node)
@@ -1949,9 +1921,7 @@ class Generate_execution_plan:
             while True:
                 try:
                     n = next(self.next_node_itr)
-                    # print ("** NEXT = ", n)
-                    if n in visited_nodes:
-                        continue
+                    #print ("** NEXT = ", n)
                 except StopIteration:
                     new_itr = self.select_iterator_strategy(self.last_node_mid)
                     # We should get_start_node() and then commit?
@@ -1964,52 +1934,22 @@ class Generate_execution_plan:
                         n = next(self.next_node_itr)
                     while n.node_mid == self.last_node_mid:
                         n = next(self.next_node_itr)
-                # print ("** NEXT = ", n)
+                #print ("** NEXT = ", n)
 
                 if n in visited_nodes:
                     continue
                 # Check if we need to change iterator strategy for the next nodes
-                # print ("** CHECK = ", n)
                 if not self.next_node_itr.check_domain(G, n.node_mid):
+                    #print ("** DOMAIN CHANGE = ", n)
                     self.next_node_itr = self.select_iterator_strategy(n.node_mid)
                     n = self.next_node_itr.get_start_node()
 
+                if n not in visited_nodes:
+                    #print ("** COMMIT: ",n)
+                    self.execution_plan.append(n)
                 visited_nodes.add(n)
                 self.last_node_mid = n.node_mid
 
-                # Add to execution plan
-                # print ("** COMMIT: ",n)
-                self.execution_plan.append(n)
-                try:
-                    n = next(self.next_node_itr)
-                    # print ("** NEXT = ", n)
-                except StopIteration:
-                    new_itr = self.select_iterator_strategy(self.last_node_mid)
-                    if new_itr != self.next_node_itr:
-                        self.next_node_itr = new_itr
-                        n = (
-                            self.next_node_itr.get_start_node()
-                        )  # if we fail here all nodes are done.
-                    else:
-                        n = next(self.next_node_itr)
-                    # print ("** NEXT = ", n)
-                    while n.node_mid == self.last_node_mid:
-                        n = next(self.next_node_itr)
-                    # print ("** NEXT = ", n)
-
-                if n in visited_nodes:
-                    continue
-
-                # print ("** CHECK = ",n)
-                if not self.next_node_itr.check_domain(G, n.node_mid):
-                    self.next_node_itr = self.select_iterator_strategy(n.node_mid)
-                    n = self.next_node_itr.get_start_node()
-
-                # Add to execution plan
-                visited_nodes.add(n)
-                self.last_node_mid = n.node_mid
-                # print ("** COMMIT: ",n)
-                self.execution_plan.append(n)
         except StopIteration:
             # We've processed all nodes
             # print ("** DONE")
@@ -2024,7 +1964,12 @@ class Generate_execution_plan:
             fields = n.is_part_of_field
             f = fields.get("-", None)
             if f is not None and f.transmitter_mid == n.node_mid:
-                plan_with_init_nodes.extend(f.init_nodes)
+                for init_n in f.init_nodes:
+                    if init_n.node_mid not in seen:
+                        seen.add(init_n.node_mid)
+                        plan_with_init_nodes.append(init_n)
             plan_with_init_nodes.append(n)
         self.execution_plan = plan_with_init_nodes
+        if len(self.execution_plan) < len(G.nodes):
+            print ("|=> WARNING: len(execution_plan) < len(G.nodes)")
         return self.execution_plan

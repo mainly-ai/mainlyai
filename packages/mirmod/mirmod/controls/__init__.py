@@ -20,6 +20,7 @@ from .chat_preview import ChatPreview
 from .codeeditor import CodeEditor
 from .execute_node import ExecuteNode
 from .jump_to_url import JumpToURL
+from .terminalshell import TerminalShell
 
 __all__ = [
     "Notice",
@@ -43,5 +44,6 @@ __all__ = [
     "ChatPreview",
     "CodeEditor",
     "ExecuteNode",
-    "JumpToURL"
+    "JumpToURL",
+    "TerminalShell"
 ]
