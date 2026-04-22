@@ -994,6 +994,19 @@ def cache_code_and_init(wob, NG, code_cache):
             # Execute the cached compiled code in the new module's namespace.
             exec(cached_compiled_code, new_module.__dict__)
             code_cache[wob_key] = new_module
+        except ModuleNotFoundError as e:
+            print("The node '{}' ({}) is missing an import: {}".format(wob.name, wob.metadata_id, e))
+            err_msg = str(e).replace('"', '\\"')
+            error_code = f"{dyn_attr_str}\n{self_id_str}\n{preamble}\n@wob.execute()\ndef execute(wob):\n    raise ModuleNotFoundError(\"{err_msg}\")\n"
+            module_name = f"WOB{wob.metadata_id}_error"
+            spec = importlib.util.spec_from_loader(module_name, loader=None)
+            error_module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = error_module
+            error_module.typing = sys.modules["typing"]
+            error_module.__dict__["__builtins__"] = globals()["__builtins__"]
+            compiled_error_code = compile(error_code, filename=WOB_FILE_TEMPLATE_PATH.format(wob.metadata_id), mode="exec")
+            exec(compiled_error_code, error_module.__dict__)
+            code_cache[wob_key] = error_module
         except Exception as e:
             print(
                 '|=> WARNING: Skipping code block "{}" ({}) because it failed to compile'.format(

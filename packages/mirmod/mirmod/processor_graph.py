@@ -737,8 +737,11 @@ class Default_node_iterator:
     def set_start_node(self, node_mid, neighbourhood={}):
 
         if node_mid in self.sorted_nodes:
-            #self.current_index = self.sorted_nodes.index(self.start_node_mid)
             # We're lazy here and restarts from index 0 to avoid losing any node.
+            # This means we rely more on the Generate_execution_plan ability to
+            # skip nodes it has seen before which isn't ideal but fairly stable
+            # because now every graph is a single topological sort from the POV of
+            # the Default iterator.
             self.current_index = 0
             return
         else:
