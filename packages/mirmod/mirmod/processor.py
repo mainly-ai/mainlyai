@@ -641,7 +641,7 @@ class CommandActorRabbitMQ(CommandActorBase):
                     return payload
             except pika.exceptions.AMQPConnectionError as e:
                 logger.warning(f"Connection issue: {e}")
-                if time.time() - self.last_interaction_time < 60*60:
+                if time.time() - self.last_interaction_time < os.environ.get("PROCESSOR_IDLE_TIMEOUT",60*60):
                     logger.info("Reconnecting...")
                     self._connect()
                     continue
