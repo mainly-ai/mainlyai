@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import threading
+
 import ulid2
 from mirmod import miranda
 
@@ -152,6 +153,8 @@ def start_runtime_thread(
     }
     if "tls_altname" in config["rabbitmq"]:
         env["RABBITMQ_TLS_ALTNAME"] = config["rabbitmq"]["tls_altname"]
+    if "idle_timeout" in payload and int(payload["idle_timeout"]) > 0:
+        env["PROCESSOR_IDLE_TIMEOUT"] = str(payload["idle_timeout"])
 
     env_str = ""
     for k, v in env.items():
