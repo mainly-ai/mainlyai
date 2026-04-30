@@ -1,5 +1,5 @@
-from ..security.security_context import Security_context
 from ..orm.base_orm import Base_object_ORM
+from ..security.security_context import Security_context
 
 
 class Compute_policy(Base_object_ORM):
@@ -20,6 +20,7 @@ class Compute_policy(Base_object_ORM):
         "requested_memory": "t.`requested_memory` as `requested_memory`",
         "host_override": "t.`host_override` as `host_override`",
         "bind_http": "t.`bind_http` as `bind_http`",
+        "idle_timeout": "t.`idle_timeout` as `idle_timeout`",
     }
     sql_compute_policy_ORM.update(Base_object_ORM.metadata)
 
@@ -34,6 +35,7 @@ class Compute_policy(Base_object_ORM):
             "requested_gpus": 0,
             "requested_cpus": 1.0,
             "requested_memory": 2.0,
+            "idle_timeout": 0,
         }
         self.id = id
         self.sctx = sc
