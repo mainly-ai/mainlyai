@@ -629,35 +629,41 @@ class CommandActorRabbitMQ(CommandActorBase):
     def wait_for_event(self, sleep_time=None, debug_prompt=""):
         self.send_response({"status": self.ready_signal})
 
+        idle_timeout = int(os.environ.get("PROCESSOR_IDLE_TIMEOUT", 60 * 60))
+
         while True:
+            if not self.connection or self.connection.is_closed:
+                self._connect()
             try:
-                if not self.connection or self.connection.is_closed:
-                    self._connect()
-                for method_frame, properties, body in self.channel.consume(
-                    self.queue_name, auto_ack=True
+                for _, _, body in self.channel.consume(
+                    self.queue_name,
+                    auto_ack=True,
+                    # add 1 second for buffer
+                    inactivity_timeout=idle_timeout + 1,
                 ):
-                    payload = body.decode()
-                    self.last_interaction_time = time.time()
-                    return payload
+                    if body is not None:
+                        self.last_interaction_time = time.time()
+                        return body.decode()
+                    if time.time() - self.last_interaction_time >= idle_timeout:
+                        self._exit_idle(idle_timeout)
             except pika.exceptions.AMQPConnectionError as e:
-                logger.warning(f"Connection issue: {e}")
-                if time.time() - self.last_interaction_time < os.environ.get("PROCESSOR_IDLE_TIMEOUT",60*60):
-                    logger.info("Reconnecting...")
-                    self._connect()
-                    continue
-                else:
-                    logger.error("No interaction for more than 1 hour. Exiting.")
-                    try:
-                        self.send_response(
-                            {"status": "EXITED", "reason": "No interaction for > 1hr"}
-                        )
-                    except Exception as send_e:
-                        logger.error(f"Failed to send EXIT signal: {send_e}")
-                    self.sctx.close()
-                    sys.exit(0)
+                if time.time() - self.last_interaction_time >= idle_timeout:
+                    self._exit_idle(idle_timeout)
+                logger.warning(f"Connection issue, will reconnect: {e}")
             except Exception as e:
                 logger.error(f"An unexpected error occurred in wait_for_event: {e}")
                 raise
+
+    def _exit_idle(self, idle_timeout):
+        logger.error(f"No interaction for more than {idle_timeout}s. Exiting.")
+        try:
+            self.send_response(
+                {"status": "EXITED", "reason": f"No interaction for > {idle_timeout}s"}
+            )
+        except Exception as send_e:
+            logger.error(f"Failed to send EXIT signal: {send_e}")
+        self.sctx.close()
+        sys.exit(0)
 
     def input(self, prompt):
         """Get a debug command from the message queue."""
