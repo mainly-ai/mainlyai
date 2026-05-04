@@ -35,7 +35,7 @@ class Compute_policy(Base_object_ORM):
             "requested_gpus": 0,
             "requested_cpus": 1.0,
             "requested_memory": 2.0,
-            "idle_timeout": 0,
+            "idle_timeout": 3600,
         }
         self.id = id
         self.sctx = sc
