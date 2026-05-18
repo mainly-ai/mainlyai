@@ -1,0 +1,57 @@
+# Stage 1: Build the requirements venv against a uv-managed Python (so it's portable across base images)
+FROM ubuntu:24.04 AS builder
+
+ENV PYTHONUNBUFFERED=1
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
+ENV UV_PYTHON_PREFERENCE=only-managed
+
+COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
+
+RUN uv python install 3.12
+RUN uv venv --python 3.12 --relocatable /venv
+ENV PATH="/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/venv"
+
+ADD dockerfiles/processor/requirements.minimal.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install -r /tmp/requirements.txt
+
+# Stage 2: Minimal runtime image
+FROM ubuntu:24.04
+
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/venv"
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
+ENV UV_PYTHON_PREFERENCE=only-managed
+ENV HOME=/
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates git openssh-client ripgrep fd-find xvfb curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/
+
+# pip/pip3 wrappers for compatibility
+RUN echo '#!/bin/sh\nuv pip "$@"' > /bin/pip && \
+    echo '#!/bin/sh\nuv pip "$@"' > /bin/pip3 && \
+    chmod +x /bin/pip /bin/pip3
+
+ARG LOGZOD_ARCH=x86_64
+ARG LOGZOD_VERSION=latest
+RUN curl -L https://github.com/mainly-ai/logzod/releases/${LOGZOD_VERSION}/download/logzod-linux-${LOGZOD_ARCH} -o /usr/local/bin/logzod && \
+    chmod +x /usr/local/bin/logzod
+
+# Bring over the managed Python interpreter the venv symlinks point at.
+COPY --from=builder /opt/uv-python /opt/uv-python
+
+# Heavy layer: requirements venv. Cached unless requirements.minimal.txt changes.
+COPY --from=builder /venv /venv
+
+# Light layer: install mirmod on top. Only this layer rebuilds when the wheel changes.
+RUN mkdir -p /miranda/dist
+ADD dist/mirmod-*.whl /miranda/dist/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --no-deps /miranda/dist/*.whl
+
+ENTRYPOINT ["/usr/local/bin/logzod", "/venv/bin/python3", "-m", "mirmod.processor"]

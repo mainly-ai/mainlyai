@@ -1,0 +1,14 @@
+mysql-connector-python==9.4.0
+networkx
+pika
+pexpect
+aio-pika
+requests
+niquests
+fastapi
+uvicorn
+PyYAML
+pandas
+numpy
+nest_asyncio
+urllib3<2

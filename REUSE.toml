@@ -1,0 +1,61 @@
+version = 1
+
+# Source code
+[[annotations]]
+path = [
+  "**/*.ts",
+  "**/*.tsx",
+  "**/*.py",
+  "**/*.rs",
+  "**/*.js",
+  "**/*.cjs",
+  "**/*.mjs",
+  "**/*.sh",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Leah Lundqvist <leah@mainly.ai>",
+  "Kristofer Älvring <kristofer@mainly.ai>",
+]
+SPDX-License-Identifier = "GPL-2.0-only"
+
+# Config files
+[[annotations]]
+path = [
+  "**/pyproject.toml",
+  "**/hatch.toml",
+  "**/*.yml",
+  "**/*.yaml",
+  "**/.gitignore",
+  "**/Dockerfile",
+  "**/Dockerfile.*",
+  "**/requirements.txt",
+  "**/requirements.*.txt",
+  ".vscode/extensions.json",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Leah Lundqvist <leah@mainly.ai>",
+  "Kristofer Älvring <kristofer@mainly.ai>",
+]
+SPDX-License-Identifier = "GPL-2.0-only"
+
+# Documentation
+[[annotations]]
+path = ["**/*.md"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Leah Lundqvist <leah@mainly.ai>",
+  "Kristofer Älvring <kristofer@mainly.ai>",
+]
+SPDX-License-Identifier = "GPL-2.0-only"
+
+# Assets
+[[annotations]]
+path = [".github/assets/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "Leah Lundqvist <leah@mainly.ai>",
+  "Kristofer Älvring <kristofer@mainly.ai>",
+]
+SPDX-License-Identifier = "GPL-2.0-only"

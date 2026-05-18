@@ -1,0 +1,155 @@
+# Database config file
+tables:
+  # Table name
+  actuator:
+    depends_on:
+      - metadata
+  edges:
+    depends_on:
+      - metadata
+  model:
+    depends_on:
+      - metadata
+  simulator:
+    depends_on:
+      - metadata
+  knowledge_object:
+    depends_on:
+      - metadata
+  storage_policy:
+    depends_on:
+      - metadata
+  etl_process:
+    depends_on:
+      - metadata
+  datastream:
+    depends_on:
+      - metadata
+  users_details:
+    depends_on:
+      - users
+  uiview:
+    depends_on:
+      - metadata
+  dashboard:
+    depends_on:
+      - metadata
+  wob_message_queue:
+    depends_on:
+      - metadata
+  compute_resources:
+    depends_on:
+      - users
+  docker_job:
+    depends_on:
+      - metadata
+      - docker_image
+      - compute_resource_group
+  docker_image:
+    depends_on:
+      - metadata
+  read_acl:
+    depends_on:
+      - metadata
+      - users
+      - groups
+  write_acl:
+    depends_on:
+      - metadata
+      - users
+      - groups
+  execute_acl:
+    depends_on:
+      - metadata
+      - users
+      - groups
+  user_groups:
+    depends_on:
+      - metadata
+      - users
+  group_maps:
+    depends_on:
+      - metadata
+      - users
+      - user_groups
+  web_users:
+    depends_on:
+      - users
+  waitlist:
+    depends_on:
+      - users
+  designer_nodes:
+    depends_on:
+      - users
+      - web_users
+  designer_edge_segments:
+    depends_on:
+      - users
+      - edges
+      - metadata
+      - web_users
+  credentials:
+    depends_on:
+      - users
+      - web_users
+  deployment:
+    depends_on:
+      - metadata
+      - users
+      - user_groups
+  tag2metadata:
+    depends_on:
+      - metadata
+  compute_policy:
+    depends_on:
+      - metadata
+  compute_resource_group:
+    depends_on:
+      - metadata
+  cr_group_map:
+    depends_on:
+      - compute_resources
+      - compute_resource_group
+  realtime_room_membership:
+    depends_on:
+      - users
+      - users_details
+      - web_users
+  realtime_room_chat:
+    depends_on:
+      - users
+      - users_details
+      - web_users
+  billing:
+    depends_on:
+      - users
+      - users_details
+      - web_users
+  organization:
+    depends_on:
+      - users
+      - users_details
+      - web_users
+  project:
+    depends_on:
+      - metadata
+  credit_transactions:
+    depends_on:
+      - users
+      - users_details
+      - organization
+  vault:
+    depends_on:
+      - users
+      - users_details
+      - organization
+  vault_object:
+    depends_on:
+      - vault
+  vault_limited_access_token:
+    depends_on:
+      - vault
+      - vault_object
+  popularity_index:
+    depends_on:
+      - metadata

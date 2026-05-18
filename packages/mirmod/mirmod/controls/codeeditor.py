@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Kristofer Älvring <kristofer@mainly.ai>
+# SPDX-FileCopyrightText: 2026 Leah Lundqvist <leah@mainly.ai>
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
 class CodeEditor:
     def __init__(self, placeholder="", max_len=16000, rows=4, language="python"):
         self.kind = "code-editor"

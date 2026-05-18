@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Kristofer Älvring <kristofer@mainly.ai>
+# SPDX-FileCopyrightText: 2026 Leah Lundqvist <leah@mainly.ai>
+#
+# SPDX-License-Identifier: GPL-2.0-only
+
+import utilities
+
+with utilities.admin_sc.connect() as con:
+    with con.cursor() as cur:
+        cur.execute("DROP FUNCTION IF EXISTS CURRENT_MIRANDA_USER_UNPREFIXED")
+        cur.execute("""
+            CREATE FUNCTION CURRENT_MIRANDA_USER_UNPREFIXED() RETURNS CHAR(128)
+            DETERMINISTIC
+            BEGIN
+            DECLARE miranda_user CHAR(128);
+            SELECT role_name INTO miranda_user FROM information_schema.APPLICABLE_ROLES where IS_DEFAULT = 'YES' AND role_name LIKE 'miranda_%' limit 1;
+            IF miranda_user IS NULL THEN
+                SET miranda_user = USER();
+            END IF;
+            SET miranda_user = TRIM('`' from REGEXP_REPLACE(miranda_user,'@.*',''));
+            RETURN SUBSTRING(miranda_user, 9); -- remove 'miranda_' prefix
+            END;
+        """)
+        con.commit()

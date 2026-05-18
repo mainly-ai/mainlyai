@@ -1,0 +1,24 @@
+[project]
+name = "miranda_admin_ops"
+version = "5.5.3"
+description = ""
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "mirmod",
+    "mysql-replication"
+]
+
+[dependency-groups]
+dev = [
+    "poethepoet>0",
+    "pytest>0",
+    "ruff>0",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

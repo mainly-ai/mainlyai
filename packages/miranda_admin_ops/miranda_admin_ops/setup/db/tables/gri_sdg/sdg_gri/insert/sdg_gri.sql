@@ -1,0 +1,66 @@
+-- SPDX-FileCopyrightText: 2026 Kristofer Älvring <kristofer@mainly.ai>
+-- SPDX-FileCopyrightText: 2026 Leah Lundqvist <leah@mainly.ai>
+--
+-- SPDX-License-Identifier: GPL-2.0-only
+
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_1_1", "GRI_207_r2, GRI_207_r3, GRI_207_r4, GRI_207_r5");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_1_2", "GRI_202_r2, GRI_203_r3");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_1_3", "GRI_207_r2, GRI_207_r3, GRI_207_r4, GRI_207_r5");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_1_4", "GRI_203_r3, GRI_413_r3#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_2_3", "GRI_413_r3#a, GRI_411_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_2", "GRI_401_r3#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_3", "GRI_401_r3#a, GRI_403_r11");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_4", "GRI_403_r11");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_5", "GRI_403_r7#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_6", "GRI_403_r10#a, GRI_403-r10#b, GRI_403-r10#c");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_7", "GRI_403_r7#a, GRI_403_r7#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_8", "GRI_203_r3, GRI_403_r7#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_3_9", "GRI_305_r2, GRI_305_r3, GRI_305_r4, GRI_305_r7#a, GRI_305_r8, GRI_306_r2, GRI_306_r3#a, GRI_306_r3#b, GRI_306_r3#c, GRI_306_r4#a, GRI_306_r4#b, GRI_306_r4#c, GRI_306_r5#a, GRI_306_r5#b, GRI_306_r5#c, GRI_306_r5#d, GRI_306_r6#a, GRI_306_r5#b, GRI_306_r5#c, GRI_306_r5#d, GRI_403_r10#b, GRI_403_r10#c, GRI_403_r11");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_4_3", "GRI_404_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_4_4", "GRI_404_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_4_5", "GRI_404_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_5_1", "GRI_202_r2, GRI_401_r2, GRI_404_r2#a, GRI_401_r4, GRI_404_r4#a, GRI_405_r2, GRI_405_r3#a, GRI_406_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_5_2", "GRI_408_r2#a, GRI_409_r2#a, GRI_414_r2#a, GRI_414_r3");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_5_4", "GRI_203_r2, GRI_401_r3, GRI_401_r4");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_5_5", "GRI_102_r23#a, GRI_102_r25, GRI_405_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_6_3", "GRI_303_r2#a, GRI_303_r2#c, GRI_303_r3#a, GRI_303_r5, GRI_306_r2, GRI_306_r3#a, GRI_306_r3#b, GRI_306_r3#c");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_6_4", "GRI_303_r2#a, GRI_303_r2#c, GRI_303_r4#c, GRI_303_r6#a, GRI_303-r6#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_6_6", "GRI_304_r2#a, GRI_304_r3, GRI_304_r4#a, GRI_204_r4#b, GRI_304_r5#a, GRI_306_r2#a, GRI_306_r4#a, GRI_305_r4#b, GRI_306_r4#c, GRI_306_r6#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_6_A", "GRI_303_r2#a, GRI_303_r2#c");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_6_B", "GRI_303_r2#a, GRI_303_r2#c");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_7_2", "GRI_302_r2, GRI_302_r3");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_7_3", "GRI_302_r2, GRI_302_r3#a, GRI_302_r4#a, GRI_302_r5#a, GRI_302_r6#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_1", "GRI_201_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_2", "GRI_201_r2,GRI_203_r3, GRI_404_r2#a, GRI_404_r3");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_3", "GRI_203_r3, GRI_204_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_4", "GRI_301_r2#a, GRI_301_r2#a, GRI_301_r4, GRI_302_r2, GRI_302_r3#a, GRI_302_r4#a, GRI_302_r5#a, GRI_306_r6#a, GRI_306_r3#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_5", "GRI_102_r9#a, GRI_102_r9#b, GRI_102_r9#c, GRI_102_r9#d, GRI_202_r2, GRI_202_r3#a, GRI_203_r3, GRI_401_r2, GRI_401_r3#a, GRI_401_r4, GRI_404_r2#a, GRI_404_r3, GRI_404_r4#a, GRI_405_r2, GRI_304_r3#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_6", "GRI_401_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_7", "GRI_408_r2, GRI_409_r2, GRI_409_r2#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_8_8", "GRI_102_r42#a, GRI_402_r2, GRI_403_r2#a, GRI_403_r3#b, GRI_403_r3#b, GRI_403_r3#b, GRI_403_r3#c, GRI_403_r3#d, GRI_403_r3#a, GRI_403_r5#a, GRI_403_r5#b, GRI_403_6#a, GRI_403_r8#a, GRI_403_r9, GRI_403_r10, GRI_403_r11, GRI_406_r2, GRI_407_r2, GRI_414_r2#a, GRI_414_r3");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_9_1", "GRI_201_r2, GRI_203_r1");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_9_4", "GRI_201_r2, GRI_203_r1");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_9_5", "GRI_201_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_10_3", "GRI_102_r9#a, GRI_102_r9#c, GRI_401_r2, GRI_404_r2#a, GRI_404_r4#a, GRI_405_r3#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_10_4", "GRI_207_r2, GRI_207_r3,GRI_207_r4,GRI_207_r5");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_11_2", "GRI_203_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_11_6", "GRI_306_r2, GRI_306_r3#a, GRI_306_r3#b, GRI_306_r3#c, GRI_306_r4#a, GRI_306_r5#a, GRI_306_r5#b, GRI_306_r5#c, GRI_306_r5#d, GRI_306_r6#a, GRI_306_r6#b, GRI_306_r6#c, GRI_306_r6#d");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_12_2", "GRI_301_r2#a, GRI_301_r3#a, GRI_301_r4#a, GRI_302_r2, GRI_302_r3#a, GRI_302_r4#a, GRI_302_r5#a, GRI_302_r6#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_12_4", "GRI_303_r2#a, GRI_303_r2#c, GRI_305_r2, GRI_305_r3, GRI_305_r4, GRI_305_r7#a, GRI_305_r8, GRI_306_r2, GRI_306_r3#a, GRI_306_r3#b, GRI_306_r3#c, GRI_306_r4#a, GRI_306_r4#b, GRI_306_r4#c, GRI_306_r5#a, GRI_306_r5#b, GRI_306_r5#c, GRI_306_r6#a, GRI_306_r6#b, GRI_306_r6#c,GRI_306_r6#d");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_12_5", "GRI_301_r3#a, GRI_301_r4#a, GRI_306_r2, GRI_306_r3#a, GRI_306_r3#b, GRI_306_r3#c, GRI_306_r4#a, GRI_306_r5#a, GRI_306_r5#b, GRI_306_r5#cGRI_306_r5#d, GRI_306_r6#a,GRI_306_r6#b,GRI_306_r6#c,GRI_306_r6#d");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_12_8", "GRI_417_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_13_1", "GRI_201_r3#a, GRI_302_r2, GRI_302_r3#a, GRI_302_r4#a, GRI_302_r5#a, GRI_302_r6#a, GRI_305_r2, GRI_305_r3, GRI_305_r4, GRI_305_r5#a, GRI_305_r6#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_14_2", "GRI_304_r2#a, GRI_204_r3, GRI_304_r4#a, GRI_304_r4#b, GRI_304_r5#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_14_3", "GRI_305_r2, GRI_305_r3, GRI_305_r4, GRI_305_r5#a,GRI_305_r6#a,GRI_305_r8");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_15_1", "GRI_304_r2#a, GRI_304_r3, GRI_304_r4, GRI_304_r5#a, GRI_306_r4#a, GRI_306_r4#b, GRI_306_r4#c, GRI_306_r6#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_15_2", "GRI_305_r2, GRI_305_r3, GRI_305_r4, GRI_305_r5#a, GRI_305_r6#a, GRI_305_r8");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_15_5", "GRI_304_r2#a, GRI_304_r3, GRI_304_r4, GRI_304_r5#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_1", "GRI_403_r10#a, GRI_403_r10#b, GRI_403_r10#c");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_2", "GRI_408_r1");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_3", "GRI_102_r17#a, GRI_102_r18#a, GRI_206_r2, GRI_307_r2#a, GRI_416#r3, GRI_417_r3, GRI_417_r4, GRI_418_r2, GRI_419_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_5", "GRI_205_r2,GRI_205_r3,GRI_205_r4, GRI_415_r2#a");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_6", "GRI_102_r24, GRI_102_r26");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_7", "GRI_102_r22, GRI_102_r23#a, GRI_102_r25, GRI_102_r30, GRI_102_r38, GRI_403_r5#a, GRI_403_r5#b");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_16_10", "GRI_418_r2");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_17_1", "GRI_207_r2, GRI_207_r3, GRI_207_r4, GRI_207_r5");
+INSERT INTO sdg_gri(SDGTarget, GRIDisclosures) VALUES ("SDG_17_3", "GRI_207_r2, GRI_207_r3, GRI_207_r4, GRI_207_r5");
